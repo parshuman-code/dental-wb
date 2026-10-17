@@ -9,6 +9,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
+import GlowButton from '@/components/GlowButton';
 
 const treatments = [
   { id: 'general-dentistry', name: 'General & Preventive Dentistry' },
@@ -178,12 +179,14 @@ function BookAppointmentContent() {
             <div className="text-sm text-amber-900 font-medium text-center sm:text-left">
               Please sign in with Google so your appointment is linked directly to your patient records and live history.
             </div>
-            <button
+            <GlowButton
               onClick={signInWithGoogle}
+              glowColor="rgba(45, 212, 191, 0.4)"
+              glowSize={120}
               className="px-4 py-2 rounded-xl bg-[#2F3E3C] text-white text-xs font-bold hover:brightness-110 shadow-xs whitespace-nowrap cursor-pointer"
             >
-              Sign In with Google
-            </button>
+              Sign In
+            </GlowButton>
           </div>
         )}
 
@@ -398,7 +401,7 @@ function BookAppointmentContent() {
               </div>
               <div className="flex gap-4">
                 <button onClick={() => setShowReview(false)} className="flex-1 py-3 font-semibold text-[#2F3E3C] bg-gradient-to-r from-[#FBF9F1] to-[#E8F0F1] hover:from-[#E8F0F1] hover:to-[#C7E7EC]/40 border border-[#BDDBD1]/40 rounded-xl transition-all shadow-sm">Edit</button>
-                <button onClick={confirmSubmit} className="flex-1 py-3 font-semibold text-[#2F3E3C] bg-gradient-to-r from-[#C7E7EC] via-[#BDDBD1] to-[#C7E7EC] hover:brightness-105 rounded-xl transition-all shadow-lg shadow-[#C7E7EC]/30">Confirm Booking</button>
+                <GlowButton onClick={confirmSubmit} glowColor="rgba(45, 212, 191, 0.45)" glowSize={180} className="flex-1 py-3 font-semibold text-[#2F3E3C] bg-gradient-to-r from-[#C7E7EC] via-[#BDDBD1] to-[#C7E7EC] hover:brightness-105 rounded-xl transition-all shadow-lg shadow-[#C7E7EC]/30">Confirm Booking</GlowButton>
               </div>
             </div>
           </div>

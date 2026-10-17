@@ -3,7 +3,7 @@ import { ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
 import Image from 'next/image';
 import ScrollReveal from '@/components/ScrollReveal';
 import BookAppointmentCTA from '@/components/BookAppointmentCTA';
-import AIChatbot from '@/components/AIChatbot';
+import GlowCard from '@/components/GlowCard';
 
 const featuredServices = [
   {
@@ -146,27 +146,33 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
             {featuredServices.map((service, idx) => (
               <ScrollReveal key={idx} direction="up" delay={idx * 150} className="h-full">
-                <div className="h-full bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1]/70 border border-[#BDDBD1]/30 rounded-2xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] transform hover:-translate-y-2 flex flex-col justify-between group">
-                  <div>
-                    <div className="h-48 overflow-hidden">
-                      <img src={service.img} alt={service.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                    </div>
-                    <div className="p-6">
-                      <h3 className="text-xl font-bold text-[#2F3E3C] mb-2">{service.title}</h3>
-                      <p className="text-[#2F3E3C]/70 text-sm leading-relaxed mb-4">{service.desc}</p>
-                      {/* Doctor badge */}
-                      <div className="flex items-center gap-2 text-xs font-semibold text-[#2F3E3C]/80 bg-[#E8F0F1]/70 px-3 py-2 rounded-xl border border-[#BDDBD1]/30">
-                        <ShieldCheck className="w-4 h-4 text-[#2F3E3C] shrink-0" />
-                        <span>By certified MDS specialists</span>
+                <GlowCard
+                  glowColor="rgba(45, 212, 191, 0.22)"
+                  glowSize={320}
+                  className="h-full bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1]/70 border border-[#BDDBD1]/30 rounded-2xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] transform hover:-translate-y-2 flex flex-col justify-between group"
+                >
+                  <div className="flex flex-col justify-between h-full">
+                    <div>
+                      <div className="h-48 overflow-hidden">
+                        <img src={service.img} alt={service.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                      </div>
+                      <div className="p-6">
+                        <h3 className="text-xl font-bold text-[#2F3E3C] mb-2">{service.title}</h3>
+                        <p className="text-[#2F3E3C]/70 text-sm leading-relaxed mb-4">{service.desc}</p>
+                        {/* Doctor badge */}
+                        <div className="flex items-center gap-2 text-xs font-semibold text-[#2F3E3C]/80 bg-[#E8F0F1]/70 px-3 py-2 rounded-xl border border-[#BDDBD1]/30">
+                          <ShieldCheck className="w-4 h-4 text-[#2F3E3C] shrink-0" />
+                          <span>By certified MDS specialists</span>
+                        </div>
                       </div>
                     </div>
+                    <div className="px-6 pb-6 pt-0">
+                      <Link href="/services" className="text-[#2F3E3C] font-semibold flex items-center gap-1 hover:gap-2 transition-all text-sm">
+                        Learn more <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    </div>
                   </div>
-                  <div className="px-6 pb-6 pt-0">
-                    <Link href="/services" className="text-[#2F3E3C] font-semibold flex items-center gap-1 hover:gap-2 transition-all text-sm">
-                      Learn more <ArrowRight className="w-4 h-4" />
-                    </Link>
-                  </div>
-                </div>
+                </GlowCard>
               </ScrollReveal>
             ))}
           </div>

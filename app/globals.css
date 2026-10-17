@@ -157,3 +157,27 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   scrollbar-width: none;
 }
 
+/* ─── Cursor-Tracking Spotlight / Glow & Interactive Utilities ─── */
+.glow-interactive {
+  position: relative;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.glow-interactive:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.glow-interactive:active {
+  transform: translateY(0px) scale(0.99);
+}
+
+.glow-spotlight-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  z-index: 1;
+}
+

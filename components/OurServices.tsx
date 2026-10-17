@@ -22,6 +22,7 @@ import ScrollReveal from '@/components/ScrollReveal';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import GlowButton from '@/components/GlowButton';
 
 export interface DentalService {
   id: string;
@@ -1018,13 +1019,15 @@ export default function OurServices() {
                     >
                       Cancel
                     </button>
-                    <button
+                    <GlowButton
                       type="submit"
+                      glowColor="rgba(45, 212, 191, 0.4)"
+                      glowSize={160}
                       className="flex-2 py-3 px-4 rounded-xl bg-gradient-to-r from-[#2F3E3C] via-[#3d524f] to-[#2F3E3C] text-white font-semibold text-sm hover:brightness-110 shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
                     >
                       <Check className="w-4 h-4 text-[#BDDBD1]" />
                       Confirm Booking Request
-                    </button>
+                    </GlowButton>
                   </div>
                 </form>
               ) : (
@@ -1064,18 +1067,21 @@ export default function OurServices() {
                   </p>
 
                   <div className="pt-2 flex flex-col gap-2.5">
-                    <button
+                    <GlowButton
                       onClick={handleWhatsAppConfirmation}
+                      glowColor="rgba(255, 255, 255, 0.4)"
+                      glowSize={180}
                       className="w-full py-3 px-4 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <span>Send Instant Confirmation via WhatsApp</span>
-                    </button>
-                    <button
+                    </GlowButton>
+                    <GlowButton
                       onClick={closeModal}
+                      glowColor="rgba(45, 212, 191, 0.35)"
                       className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#2F3E3C] to-[#3d524f] text-white font-semibold text-sm hover:brightness-110 transition-all cursor-pointer"
                     >
                       Done
-                    </button>
+                    </GlowButton>
                   </div>
                 </div>
               )}

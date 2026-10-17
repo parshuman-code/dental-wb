@@ -3,6 +3,8 @@
 import { useAuth } from '@/components/auth/AuthProvider';
 import { ArrowRight } from 'lucide-react';
 
+import GlowButton from '@/components/GlowButton';
+
 interface BookAppointmentCTAProps {
   className?: string;
   children?: React.ReactNode;
@@ -26,12 +28,17 @@ export default function BookAppointmentCTA({
   };
 
   return (
-    <button onClick={handleClick} className={className}>
+    <GlowButton
+      onClick={handleClick}
+      glowColor="rgba(45, 212, 191, 0.45)"
+      glowSize={160}
+      className={className}
+    >
       {children || (
         <>
           Book Appointment <ArrowRight className="w-5 h-5" />
         </>
       )}
-    </button>
+    </GlowButton>
   );
 }
