@@ -21,8 +21,14 @@ export const metadata: Metadata = {
   title: "Dental | Premium Dental Clinic & Specialist Care",
   description: "Advanced, gentle dental care by certified MDS doctors. Book appointments, view treatment plans, and track your dental records securely.",
   icons: {
-    icon: "/favicon.svg",
-    apple: "/favicon.svg",
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico' },
+    ],
+    apple: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: ['/favicon.svg'],
   },
 };
 
