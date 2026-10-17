@@ -20,6 +20,10 @@ import AIChatbot from "@/components/AIChatbot";
 export const metadata: Metadata = {
   title: "Luminous Dental | Premium Dental Clinic & Specialist Care",
   description: "Advanced, gentle dental care by certified MDS doctors. Book appointments, view treatment plans, and track your dental records securely.",
+  icons: {
+    icon: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
