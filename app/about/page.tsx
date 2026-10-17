@@ -8,7 +8,7 @@ export default function AboutPage() {
       {/* Header Banner */}
       <section className="bg-gradient-to-r from-[#2F3E3C] via-[#354845] to-[#2F3E3C] py-24 px-4 sm:px-6 lg:px-8 text-center shadow-md">
         <ScrollReveal direction="up">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">About Luminous Dental</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">About Dental</h1>
           <p className="text-xl text-[#E7E9E3] max-w-2xl mx-auto">
             Combining advanced medical science with compassionate care to deliver exceptional dental outcomes.
           </p>

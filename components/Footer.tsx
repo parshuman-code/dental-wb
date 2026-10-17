@@ -119,7 +119,7 @@ export default function Footer() {
         <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-[#BDDBD1]/30 to-transparent mt-16 mb-8" />
 
         <div className="text-center text-[#E7E9E3]/70 text-sm">
-          <p suppressHydrationWarning>&copy; <CurrentYear /> Luminous Dental Clinic. All rights reserved.</p>
+          <p suppressHydrationWarning>&copy; <CurrentYear /> Dental Clinic. All rights reserved.</p>
         </div>
       </div>
     </footer>

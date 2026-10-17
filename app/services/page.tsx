@@ -5,7 +5,7 @@ import OurServices from '@/components/OurServices';
 import BookAppointmentCTA from '@/components/BookAppointmentCTA';
 
 export const metadata = {
-  title: 'Our Dental Services | Luminous Dental Clinic',
+  title: 'Our Dental Services | Dental Clinic',
   description: 'Explore our complete, patient-friendly list of modern dental treatments. Certified MDS specialists, painless procedures, and transparent care.',
 };
 

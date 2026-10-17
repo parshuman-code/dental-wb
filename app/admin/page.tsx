@@ -67,7 +67,7 @@ export default function AdminDashboard() {
   };
 
   const handleWhatsApp = (appt: Appointment) => {
-    const text = 'Hello ' + appt.name + ', this is Luminous Dental Clinic regarding your appointment for ' + appt.treatment + ' on ' + appt.date + ' at ' + appt.time + '. Please let us know if you have any questions.';
+    const text = 'Hello ' + appt.name + ', this is Dental Clinic regarding your appointment for ' + appt.treatment + ' on ' + appt.date + ' at ' + appt.time + '. Please let us know if you have any questions.';
     const url = 'https://wa.me/' + appt.phone + '?text=' + encodeURIComponent(text);
     window.open(url, '_blank');
   };

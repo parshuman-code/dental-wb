@@ -189,7 +189,7 @@ export const DENTAL_SERVICES: DentalService[] = [
     categoryLabel: 'Replacement & Implants (Replacing Missing Teeth)',
     title: 'Veneers & Smile Makeover',
     plainEnglishSummary: 'Thin porcelain shells to fix chipped, discolored, or gapped front teeth.',
-    detailedDescription: 'Ultra-thin, custom-crafted ceramic or composite shells bonded over the front face of your teeth. They instantly correct deep stains, gaps between teeth, uneven lengths, and chips, creating a luminous, symmetrical, movie-star smile.',
+    detailedDescription: 'Ultra-thin, custom-crafted ceramic or composite shells bonded over the front face of your teeth. They instantly correct deep stains, gaps between teeth, uneven lengths, and chips, creating a radiant, symmetrical, movie-star smile.',
     keyPerks: ['Transforms chipped and discolored teeth', 'Stain-resistant high-luster porcelain', 'Custom-shaped to match facial harmony'],
     duration: '2 custom appointments',
     comfortLevel: 'Minimal Prep / Very Comfortable',
@@ -479,7 +479,7 @@ export default function OurServices() {
   };
 
   const handleWhatsAppConfirmation = () => {
-    const message = `Hello Luminous Dental, I would like to confirm my appointment request.\n\n*Reference:* ${bookingRef}\n*Treatment:* ${selectedServiceForModal.title}\n*Patient Name:* ${patientName}\n*Date:* ${appointmentDate}\n*Time:* ${appointmentTime}\n${notes ? `*Notes:* ${notes}` : ''}`;
+    const message = `Hello Dental Clinic, I would like to confirm my appointment request.\n\n*Reference:* ${bookingRef}\n*Treatment:* ${selectedServiceForModal.title}\n*Patient Name:* ${patientName}\n*Date:* ${appointmentDate}\n*Time:* ${appointmentTime}\n${notes ? `*Notes:* ${notes}` : ''}`;
     const url = `https://wa.me/919876543210?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };

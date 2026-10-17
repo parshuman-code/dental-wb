@@ -55,7 +55,7 @@ export default function Navbar() {
               <div className="p-2 rounded-xl bg-gradient-to-br from-[#E8F0F1] to-[#C7E7EC]/60 group-hover:from-[#C7E7EC] group-hover:to-[#BDDBD1] transition-all duration-300 shadow-sm">
                 <Stethoscope className="h-6 w-6 text-[#2F3E3C]" />
               </div>
-              <span className="font-bold text-xl text-[#2F3E3C] tracking-tight">Luminous Dental</span>
+              <span className="font-bold text-xl text-[#2F3E3C] tracking-tight">Dental</span>
             </Link>
           </div>
           

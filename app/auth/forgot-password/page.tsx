@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
                 <Stethoscope className="w-7 h-7" />
               </div>
               <span className="font-bold text-2xl text-[#2F3E3C] tracking-tight">
-                Luminous Dental
+                Dental
               </span>
             </Link>
             <h1 className="text-3xl font-extrabold text-[#2F3E3C] tracking-tight">

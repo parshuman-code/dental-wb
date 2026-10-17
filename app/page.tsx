@@ -111,7 +111,7 @@ export default function Home() {
               <div>
                 <h2 className="text-4xl font-bold text-[#2F3E3C] mb-6">A New Standard in <span className="text-[#2F3E3C]">Dental Excellence</span></h2>
                 <p className="text-lg text-[#2F3E3C]/70 mb-8 leading-relaxed">
-                  At Luminous Dental, we believe that a healthy smile is the foundation of overall wellness. Our clinic combines advanced scientific procedures with a patient-first approach to deliver painless, effective, and lasting results.
+                  At Dental, we believe that a healthy smile is the foundation of overall wellness. Our clinic combines advanced scientific procedures with a patient-first approach to deliver painless, effective, and lasting results.
                 </p>
                 <ul className="space-y-4 mb-10">
                   {['State-of-the-art Equipment', 'Experienced Specialists', 'Painless Treatments', 'Comprehensive Care'].map((item, idx) => (
