@@ -72,12 +72,14 @@ export default function AboutPage() {
               <ScrollReveal key={i} direction="up" delay={i * 150}>
                 <div className="bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1]/70 border border-[#BDDBD1]/30 rounded-2xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group">
                   <div className="h-72 overflow-hidden relative">
-                    <img 
-                      src={"https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=500&q=60"}
+                    <Image 
+                      src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=500&q=60"
                       alt={"Doctor " + i}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      fill
+                      sizes="(max-width: 768px) 100vw, 33vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#2F3E3C]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] flex items-end p-6">
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#2F3E3C]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] flex items-end p-6 z-1">
                       <p className="text-white text-sm">Board Certified • 10+ Years Experience</p>
                     </div>
                   </div>
@@ -107,11 +109,13 @@ export default function AboutPage() {
                     <p>• Pioneer in guided implant surgery</p>
                   </div>
                 </div>
-                <div className="h-64 lg:h-auto relative">
-                  <img 
+                <div className="h-64 lg:h-auto min-h-[300px] relative">
+                  <Image 
                     src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=800&q=80"
                     alt="Chief Dentist"
-                    className="absolute inset-0 w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                    className="object-cover"
                   />
                 </div>
               </div>

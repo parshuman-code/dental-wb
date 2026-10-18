@@ -34,12 +34,15 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative h-[80vh] min-h-[600px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img
+          <Image
             src="https://images.unsplash.com/photo-1606811841689-23dfddce3e95?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80"
             alt="Modern Dental Clinic"
-            className="w-full h-full object-cover"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
           />
-          <div className="absolute inset-0 bg-[#2F3E3C]/60 mix-blend-multiply"></div>
+          <div className="absolute inset-0 bg-[#2F3E3C]/60 mix-blend-multiply z-1"></div>
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -99,10 +102,12 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <ScrollReveal direction="left" delay={150}>
               <div className="relative h-[500px] rounded-2xl overflow-hidden shadow-2xl">
-                <img
+                <Image
                   src="https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
                   alt="Our Clinic"
-                  className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover transition-transform duration-700 hover:scale-105"
                 />
               </div>
             </ScrollReveal>
@@ -153,8 +158,14 @@ export default function Home() {
                 >
                   <div className="flex flex-col justify-between h-full">
                     <div>
-                      <div className="h-48 overflow-hidden">
-                        <img src={service.img} alt={service.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                      <div className="relative h-48 overflow-hidden">
+                        <Image
+                          src={service.img}
+                          alt={service.title}
+                          fill
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
+                          className="object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
                       </div>
                       <div className="p-6">
                         <h3 className="text-xl font-bold text-[#2F3E3C] mb-2">{service.title}</h3>

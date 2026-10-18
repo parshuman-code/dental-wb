@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   Sparkles, 
   ShieldCheck, 
@@ -701,13 +702,14 @@ export default function OurServices() {
                 >
                   {/* Top Image Section */}
                   <div className="relative h-36 sm:h-44 w-full overflow-hidden bg-slate-900 shrink-0">
-                    <img
+                    <Image
                       src={service.image}
                       alt={service.title}
-                      className="w-full h-full object-cover transition-transform duration-700 ease-out"
-                      loading="lazy"
+                      fill
+                      sizes="(max-width: 640px) 90vw, (max-width: 1024px) 500px, 580px"
+                      className="object-cover transition-transform duration-700 ease-out"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent pointer-events-none z-1" />
 
                     {/* Category pill on image */}
                     <div className="absolute top-3 left-3">

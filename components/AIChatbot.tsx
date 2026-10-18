@@ -273,9 +273,9 @@ export default function AIChatbot() {
                 );
               })}
 
-              {/* Typing Indicator */}
+              {/* Lightweight Skeleton Loading UI */}
               {isLoading && (
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-2 animate-in fade-in duration-200">
                   <div className="w-7 h-7 rounded-full bg-white p-0.5 border border-[#BDDBD1] shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
                     <Image
                       src="/dento.png"
@@ -285,13 +285,15 @@ export default function AIChatbot() {
                       className="w-full h-full object-contain animate-pulse"
                     />
                   </div>
-                  <div className="bg-white border border-[#BDDBD1]/70 rounded-xl rounded-tl-none px-3 py-2 shadow-xs text-xs text-[#1E2D2A] flex items-center gap-2">
-                    <span className="flex space-x-1">
-                      <span className="w-1.5 h-1.5 bg-[#172523] rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                      <span className="w-1.5 h-1.5 bg-[#172523] rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                      <span className="w-1.5 h-1.5 bg-[#172523] rounded-full animate-bounce"></span>
-                    </span>
-                    <span className="text-[#172523] font-semibold text-[11px]">DenTo is thinking...</span>
+                  <div className="bg-white border border-[#BDDBD1]/70 rounded-xl rounded-tl-none p-3 shadow-xs w-[75%] space-y-2">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      <span className="text-[10px] font-bold text-[#172523] uppercase tracking-wider">DenTo is typing</span>
+                    </div>
+                    {/* Shimmer skeleton bars */}
+                    <div className="h-2.5 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-full animate-pulse"></div>
+                    <div className="h-2.5 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-[85%] animate-pulse [animation-delay:150ms]"></div>
+                    <div className="h-2.5 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-[60%] animate-pulse [animation-delay:300ms]"></div>
                   </div>
                 </div>
               )}

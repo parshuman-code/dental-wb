@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, limit } from 'firebase/firestore';
 import {
   Calendar,
   Clock,
@@ -111,20 +111,25 @@ export default function DashboardPage() {
 
     const q = query(
       collection(db, 'appointments'),
-      where('uid', '==', user.uid)
+      where('uid', '==', user.uid),
+      limit(50)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const appts: any[] = [];
       snapshot.docs.forEach(d => {
         const data = d.data();
+
+        // Independent history deletion: skip records hidden by the user
+        if (data.hiddenByUser === true || data.hiddenFromUser === true) {
+          return;
+        }
+
         const apptDate = data.date || '';
 
-        // Auto-delete expired appointments from Firestore
-        if (apptDate && apptDate < todayStr) {
-          deleteDoc(doc(db, 'appointments', d.id)).catch(err => {
-            console.warn('Dashboard auto-delete error:', err);
-          });
-          return;
+        // Mark as Completed if past date and previously confirmed, keeping record intact
+        let status = data.status || 'Pending';
+        if (apptDate && apptDate < todayStr && status === 'Confirmed') {
+          status = 'Completed';
         }
 
         const createdAtMillis = data.createdAt?.toMillis ? data.createdAt.toMillis() : (data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0);
@@ -136,7 +141,7 @@ export default function DashboardPage() {
           time: data.time || '',
           doctor: data.doctor || 'MDS Specialist',
           notes: data.notes || '',
-          status: data.status || 'Pending',
+          status,
           createdAtMillis,
         });
       });
@@ -212,12 +217,16 @@ export default function DashboardPage() {
     }
   }, [user, fetchAppointments, fetchPlans, fetchFiles, fetchActivity]);
 
-  // Handle Cancel Appointment
+  // Handle Cancel Appointment (Cancelled by Patient)
   const handleCancelAppointment = async (id: string) => {
     if (!confirm('Are you sure you want to cancel this appointment request?')) return;
     try {
-      await updateDoc(doc(db, 'appointments', id), { status: 'Cancelled' });
-      showFeedback('success', 'Appointment marked as Cancelled');
+      await updateDoc(doc(db, 'appointments', id), { 
+        status: 'Cancelled by Patient',
+        cancelledBy: 'patient',
+        cancelledAt: new Date().toISOString()
+      });
+      showFeedback('success', 'Appointment marked as Cancelled by Patient');
     } catch {
       showFeedback('error', 'Failed to cancel appointment');
     }

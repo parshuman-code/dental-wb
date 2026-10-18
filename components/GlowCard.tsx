@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, memo } from 'react';
 
 export interface GlowCardProps extends React.HTMLAttributes<HTMLDivElement> {
   glowColor?: string;
@@ -9,7 +9,7 @@ export interface GlowCardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
 }
 
-export default function GlowCard({
+function GlowCardComponent({
   glowColor = "rgba(45, 212, 191, 0.18)",
   glowSize = 280,
   glowBlur = "blur-2xl",
@@ -21,17 +21,28 @@ export default function GlowCard({
   ...props
 }: GlowCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const rafId = useRef<number | null>(null);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isHovered, setIsHovered] = useState(false);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (cardRef.current) {
-      const rect = cardRef.current.getBoundingClientRect();
-      setCoords({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    if (rafId.current) {
+      cancelAnimationFrame(rafId.current);
     }
+
+    rafId.current = requestAnimationFrame(() => {
+      if (cardRef.current) {
+        const rect = cardRef.current.getBoundingClientRect();
+        setCoords({
+          x: clientX - rect.left,
+          y: clientY - rect.top,
+        });
+      }
+    });
+
     if (onMouseMove) {
       onMouseMove(e);
     }
@@ -51,6 +62,14 @@ export default function GlowCard({
     }
   };
 
+  React.useEffect(() => {
+    return () => {
+      if (rafId.current) {
+        cancelAnimationFrame(rafId.current);
+      }
+    };
+  }, []);
+
   return (
     <div
       ref={cardRef}
@@ -63,16 +82,16 @@ export default function GlowCard({
       {/* Soft spotlight following cursor */}
       <div
         aria-hidden="true"
-        className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full transition-opacity duration-300 ${glowBlur} ${
+        className={`pointer-events-none absolute rounded-full transition-opacity duration-300 ${glowBlur} ${
           isHovered ? 'opacity-100' : 'opacity-0'
         }`}
         style={{
-          left: `${coords.x}px`,
-          top: `${coords.y}px`,
+          transform: `translate3d(calc(${coords.x}px - 50%), calc(${coords.y}px - 50%), 0)`,
           width: `${glowSize}px`,
           height: `${glowSize}px`,
           backgroundColor: glowColor,
           zIndex: 1,
+          willChange: isHovered ? 'transform, opacity' : 'auto',
         }}
       />
       <div className="relative z-10 w-full h-full">
@@ -81,3 +100,6 @@ export default function GlowCard({
     </div>
   );
 }
+
+const GlowCard = memo(GlowCardComponent);
+export default GlowCard;
