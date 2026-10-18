@@ -343,10 +343,10 @@ function BookingHistoryContent() {
 
                   {/* Status badge & Mobile/Desktop Delete Actions */}
                   {isCancelled ? (
-                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                      {/* Mobile phone view: dedicated delete icon button beside the cancelled badge */}
-                      <div className="flex sm:hidden items-center gap-2">
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-red-200 bg-white/80 shadow-xs">
+                    <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-red-100/60">
+                      {/* Mobile phone view: dedicated delete icon button immediately beside the cancelled badge */}
+                      <div className="flex sm:hidden items-center justify-between w-full gap-2">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-red-200 bg-white shadow-xs">
                           <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
                           <span className="text-xs font-bold text-red-600">Cancelled</span>
                         </div>
@@ -354,10 +354,11 @@ function BookingHistoryContent() {
                           type="button"
                           aria-label="Delete cancelled appointment"
                           onClick={() => handleDeleteCancelled(appt.id)}
-                          className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 text-white flex items-center justify-center shadow-xs transition-transform cursor-pointer"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 text-white shadow-xs text-xs font-bold transition-all cursor-pointer"
                           title="Delete appointment from history"
                         >
-                          <Trash2 className="w-4 h-4 text-white" />
+                          <Trash2 className="w-3.5 h-3.5 text-white" />
+                          <span>Delete</span>
                         </button>
                       </div>
 
