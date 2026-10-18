@@ -341,43 +341,63 @@ function BookingHistoryContent() {
                     </div>
                   </div>
 
-                  {/* Status badge */}
+                  {/* Status badge & Mobile/Desktop Delete Actions */}
                   {isCancelled ? (
-                    // Fixed-size pill so the overlay never changes the layout
-                    <div
-                      className="relative shrink-0"
-                      style={{ width: 130, height: 36, overflow: 'hidden', borderRadius: 9999 }}
-                    >
-                      {/* Static badge content */}
-                      <div
-                        className="absolute inset-0 flex items-center justify-center gap-2 border border-red-200 bg-white/70 shadow-sm"
-                        style={{ borderRadius: 9999 }}
-                      >
-                        <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                        <span className={statusClass}>Cancelled</span>
+                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                      {/* Mobile phone view: dedicated delete icon button beside the cancelled badge */}
+                      <div className="flex sm:hidden items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-red-200 bg-white/80 shadow-xs">
+                          <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                          <span className="text-xs font-bold text-red-600">Cancelled</span>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Delete cancelled appointment"
+                          onClick={() => handleDeleteCancelled(appt.id)}
+                          className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 text-white flex items-center justify-center shadow-xs transition-transform cursor-pointer"
+                          title="Delete appointment from history"
+                        >
+                          <Trash2 className="w-4 h-4 text-white" />
+                        </button>
                       </div>
 
-                      {/* Dustbin overlay — slides in from right within the exact same box */}
-                      <button
-                        aria-label="Remove cancelled appointment"
-                        onClick={() => handleDeleteCancelled(appt.id)}
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: '#dc2626',
-                          borderRadius: 9999,
-                          transform: isHovered ? 'translateX(0%)' : 'translateX(101%)',
-                          transition: 'transform 0.32s cubic-bezier(0.4,0,0.2,1)',
-                          pointerEvents: isHovered ? 'auto' : 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
+                      {/* Desktop view (sm and up): interactive sliding dustbin overlay */}
+                      <div
+                        className="hidden sm:block relative shrink-0"
+                        style={{ width: 130, height: 36, overflow: 'hidden', borderRadius: 9999 }}
                       >
-                        <Trash2 className="w-4 h-4 text-white" />
-                      </button>
+                        {/* Static badge content */}
+                        <div
+                          className="absolute inset-0 flex items-center justify-center gap-2 border border-red-200 bg-white/70 shadow-sm"
+                          style={{ borderRadius: 9999 }}
+                        >
+                          <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                          <span className={statusClass}>Cancelled</span>
+                        </div>
+
+                        {/* Dustbin overlay — slides in on hover within the exact same box */}
+                        <button
+                          type="button"
+                          aria-label="Remove cancelled appointment"
+                          onClick={() => handleDeleteCancelled(appt.id)}
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#dc2626',
+                            borderRadius: 9999,
+                            transform: isHovered ? 'translateX(0%)' : 'translateX(101%)',
+                            transition: 'transform 0.32s cubic-bezier(0.4,0,0.2,1)',
+                            pointerEvents: isHovered ? 'auto' : 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 text-white" />
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#BDDBD1]/40 bg-white/70 shadow-sm shrink-0 w-full sm:w-auto justify-center sm:justify-start">
