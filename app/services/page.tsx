@@ -1,8 +1,17 @@
 import Link from 'next/link';
 import { ShieldCheck, Heart, Sparkles, HelpCircle, Phone, Clock, ArrowRight } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import ScrollReveal from '@/components/ScrollReveal';
-import OurServices from '@/components/OurServices';
 import BookAppointmentCTA from '@/components/BookAppointmentCTA';
+
+const OurServices = dynamic(() => import('@/components/OurServices'), {
+  loading: () => (
+    <div className="py-24 text-center">
+      <div className="w-10 h-10 border-3 border-[#2F3E3C] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+      <p className="text-sm font-semibold text-[#2F3E3C]/70">Loading dental services...</p>
+    </div>
+  ),
+});
 
 export const metadata = {
   title: 'Our Dental Services | Dental Clinic',

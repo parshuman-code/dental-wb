@@ -7,6 +7,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Image from 'next/image';
 import GlowButton from '@/components/GlowButton';
+import { db } from '@/lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 const OWNER_EMAIL = 'prashantgadwe142006@gmail.com';
 
@@ -20,9 +22,12 @@ const baseNavLinks = [
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const { user, loading, signInWithGoogle, signOut } = useAuth();
+
+  const isOwner = user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
 
   const isActive = (href: string) => {
     if (href === '/') {
@@ -30,6 +35,31 @@ export default function Navbar() {
     }
     return pathname.startsWith(href);
   };
+
+  // Real-time listener for incoming pending appointments
+  useEffect(() => {
+    if (!user) {
+      setPendingCount(0);
+      return;
+    }
+
+    let q;
+    if (isOwner) {
+      // Owner gets notified of ALL incoming pending appointment requests
+      q = query(collection(db, 'appointments'), where('status', '==', 'Pending'));
+    } else {
+      // Patient gets notified if they have pending bookings
+      q = query(collection(db, 'appointments'), where('uid', '==', user.uid), where('status', '==', 'Pending'));
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setPendingCount(snapshot.docs.length);
+    }, (err) => {
+      console.warn('Navbar notification listener:', err);
+    });
+
+    return () => unsubscribe();
+  }, [user, isOwner]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -78,7 +108,7 @@ export default function Navbar() {
             })}
 
             {user ? (
-              /* Authenticated User Menu — Avatar Logo Only */
+              /* Authenticated User Menu — Avatar Logo with Notification Badge */
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
@@ -99,10 +129,20 @@ export default function Navbar() {
                       {displayName.charAt(0).toUpperCase()}
                     </div>
                   )}
+
+                  {/* Real-Time Notification Message Bulge Number */}
+                  {pendingCount > 0 && (
+                    <span 
+                      title={`${pendingCount} pending booking requests awaiting review`}
+                      className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-500 to-rose-500 px-1 text-[10px] font-extrabold text-white shadow-md ring-2 ring-white animate-bounce"
+                    >
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </span>
+                  )}
                 </button>
 
                 {userDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white/95 backdrop-blur-md shadow-xl border border-[#BDDBD1]/40 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white/95 backdrop-blur-md shadow-xl border border-[#BDDBD1]/40 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="px-4 py-2 border-b border-[#BDDBD1]/20">
                       <p className="text-xs font-bold text-[#2F3E3C] truncate">{displayName}</p>
                       <p className="text-[11px] text-[#2F3E3C]/60 truncate">{displayEmail}</p>
@@ -120,20 +160,34 @@ export default function Navbar() {
                     <Link
                       href="/booking-history"
                       onClick={() => setUserDropdownOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-[#2F3E3C] hover:bg-[#E8F0F1]/60 transition-colors"
+                      className="flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-[#2F3E3C] hover:bg-[#E8F0F1]/60 transition-colors"
                     >
-                      <User className="w-4 h-4 text-[#BDDBD1]" />
-                      <span>Booking History</span>
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-[#BDDBD1]" />
+                        <span>Booking History</span>
+                      </div>
+                      {!isOwner && pendingCount > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                          {pendingCount}
+                        </span>
+                      )}
                     </Link>
 
-                    {user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase() && (
+                    {isOwner && (
                       <Link
                         href="/admin"
                         onClick={() => setUserDropdownOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-amber-900 bg-amber-50/70 hover:bg-amber-100/80 transition-colors"
+                        className="flex items-center justify-between px-4 py-2.5 text-xs font-bold text-amber-900 bg-amber-50/70 hover:bg-amber-100/80 transition-colors"
                       >
-                        <ShieldCheck className="w-4 h-4 text-amber-600" />
-                        <span>Owner Clinic Admin</span>
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-amber-600" />
+                          <span>Owner Clinic Admin</span>
+                        </div>
+                        {pendingCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold shadow-xs animate-pulse">
+                            {pendingCount} new
+                          </span>
+                        )}
                       </Link>
                     )}
 
@@ -207,13 +261,20 @@ export default function Navbar() {
             {user && (
               <div className="px-3 py-2 mb-2 rounded-xl bg-white/70 border border-[#BDDBD1]/40 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  {photoURL ? (
-                    <Image src={photoURL} alt={displayName} width={34} height={34} className="w-8 h-8 rounded-full object-cover shadow-xs border border-white" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#BDDBD1] to-[#C7E7EC] text-[#2F3E3C] font-bold text-xs flex items-center justify-center shadow-xs">
-                      {displayName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <div className="relative">
+                    {photoURL ? (
+                      <Image src={photoURL} alt={displayName} width={34} height={34} className="w-8 h-8 rounded-full object-cover shadow-xs border border-white" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#BDDBD1] to-[#C7E7EC] text-[#2F3E3C] font-bold text-xs flex items-center justify-center shadow-xs">
+                        {displayName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {pendingCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-[9px] font-black text-white shadow-xs ring-1 ring-white">
+                        {pendingCount}
+                      </span>
+                    )}
+                  </div>
                   <div>
                     <p className="text-xs font-bold text-[#2F3E3C]">{displayName}</p>
                     <p className="text-[10px] text-[#2F3E3C]/60">{displayEmail}</p>
@@ -224,9 +285,14 @@ export default function Navbar() {
                     <Link
                       href="/admin"
                       onClick={() => setIsOpen(false)}
-                      className="text-xs font-bold px-2.5 py-1 bg-amber-600 text-white rounded-lg shadow-xs"
+                      className="text-xs font-bold px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-xs flex items-center gap-1"
                     >
-                      Admin
+                      <span>Admin</span>
+                      {pendingCount > 0 && (
+                        <span className="px-1 py-0.2 rounded-full bg-white text-amber-700 text-[9px] font-black">
+                          {pendingCount}
+                        </span>
+                      )}
                     </Link>
                   )}
                   <Link

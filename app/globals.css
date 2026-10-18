@@ -127,25 +127,28 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
 
 @keyframes dentoFloat {
   0%, 100% {
-    transform: translateY(0px) rotate(0deg);
+    transform: translate3d(0, 0px, 0) rotate(0deg);
   }
   50% {
-    transform: translateY(-6px) rotate(2deg);
+    transform: translate3d(0, -6px, 0) rotate(2deg);
   }
 }
 
 .dento-pop-in {
   animation: dentoPopIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   transform-origin: bottom right;
+  will-change: transform, opacity, filter;
 }
 
 .dento-pop-out {
   animation: dentoPopOut 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   transform-origin: bottom right;
+  will-change: transform, opacity, filter;
 }
 
 .dento-float {
   animation: dentoFloat 4s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* ─── Hide scrollbar but keep horizontal scrolling on touch / phone ─── */

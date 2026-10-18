@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, memo } from 'react';
 
 export interface GlowButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   glowColor?: string;
@@ -9,7 +9,7 @@ export interface GlowButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
   children: React.ReactNode;
 }
 
-export default function GlowButton({
+function GlowButtonComponent({
   glowColor = "rgba(45, 212, 191, 0.35)", // soft teal / aqua glow matching dental theme
   glowSize = 140,
   glowBlur = "blur-xl",
@@ -21,17 +21,28 @@ export default function GlowButton({
   ...props
 }: GlowButtonProps) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const rafId = useRef<number | null>(null);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isHovered, setIsHovered] = useState(false);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setCoords({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    if (rafId.current) {
+      cancelAnimationFrame(rafId.current);
     }
+
+    rafId.current = requestAnimationFrame(() => {
+      if (buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        setCoords({
+          x: clientX - rect.left,
+          y: clientY - rect.top,
+        });
+      }
+    });
+
     if (onMouseMove) {
       onMouseMove(e);
     }
@@ -51,6 +62,14 @@ export default function GlowButton({
     }
   };
 
+  React.useEffect(() => {
+    return () => {
+      if (rafId.current) {
+        cancelAnimationFrame(rafId.current);
+      }
+    };
+  }, []);
+
   return (
     <button
       ref={buttonRef}
@@ -63,16 +82,16 @@ export default function GlowButton({
       {/* Dynamic Cursor-Tracking Glow / Spotlight */}
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full transition-opacity duration-300 ${glowBlur} ${
+        className={`pointer-events-none absolute rounded-full transition-opacity duration-300 ${glowBlur} ${
           isHovered ? 'opacity-100' : 'opacity-0'
         }`}
         style={{
-          left: `${coords.x}px`,
-          top: `${coords.y}px`,
+          transform: `translate3d(calc(${coords.x}px - 50%), calc(${coords.y}px - 50%), 0)`,
           width: `${glowSize}px`,
           height: `${glowSize}px`,
           backgroundColor: glowColor,
           zIndex: 1,
+          willChange: isHovered ? 'transform, opacity' : 'auto',
         }}
       />
 
@@ -83,3 +102,6 @@ export default function GlowButton({
     </button>
   );
 }
+
+const GlowButton = memo(GlowButtonComponent);
+export default GlowButton;

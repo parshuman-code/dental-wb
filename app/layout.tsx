@@ -14,8 +14,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import dynamic from "next/dynamic";
 import { AuthProvider } from "@/components/auth/AuthProvider";
-import AIChatbot from "@/components/AIChatbot";
+
+const AIChatbot = dynamic(() => import("@/components/AIChatbot"));
 
 export const metadata: Metadata = {
   title: "Dental | Premium Dental Clinic & Specialist Care",

@@ -1,50 +1,85 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { Calendar as CalendarIcon, Clock, Activity, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Calendar as CalendarIcon, Clock, Activity, CheckCircle2, XCircle, Trash2, ArrowRight, ExternalLink, Sparkles } from 'lucide-react';
 import ScrollReveal from '@/components/ScrollReveal';
 
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, limit } from 'firebase/firestore';
 
-export default function BookingHistoryPage() {
+function BookingHistoryContent() {
+  const searchParams = useSearchParams();
+  const trackingApptId = searchParams.get('id');
+  const trackingUid = searchParams.get('uid');
+  const trackingPhone = searchParams.get('phone');
+
   const { user, loading: authLoading, signInWithGoogle } = useAuth();
   const [filter, setFilter] = useState('All');
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
+  // Helper to get locally hidden appointment IDs
+  const getLocallyHiddenIds = (): string[] => {
+    try {
+      const stored = localStorage.getItem('luminous_hidden_appts');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const addLocallyHiddenId = (id: string) => {
+    try {
+      const current = getLocallyHiddenIds();
+      if (!current.includes(id)) {
+        localStorage.setItem('luminous_hidden_appts', JSON.stringify([...current, id]));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     if (authLoading) return;
 
     // Helper: ISO date string for today 'YYYY-MM-DD'
     const todayStr = new Date().toISOString().split('T')[0];
+    const locallyHiddenIds = getLocallyHiddenIds();
 
+    // Priority 1: User has an active authenticated session
     if (user) {
       setLoading(true);
-      // Query by user.uid only (no composite index required in Firestore)
+      // Query by user.uid only with limit capping
       const q = query(
         collection(db, 'appointments'),
-        where('uid', '==', user.uid)
+        where('uid', '==', user.uid),
+        limit(50)
       );
 
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
           const validAppts: any[] = [];
+          const currentHidden = getLocallyHiddenIds();
 
           snapshot.docs.forEach(docSnap => {
             const data = docSnap.data();
+
+            // Independent history deletion: skip records hidden by the user
+            if (data.hiddenByUser === true || data.hiddenFromUser === true || currentHidden.includes(docSnap.id)) {
+              return;
+            }
+
             const apptDate = data.date || '';
 
-            // Auto-delete if appointment date is over (strictly before today)
-            if (apptDate && apptDate < todayStr) {
-              deleteDoc(doc(db, 'appointments', docSnap.id)).catch(err => {
-                console.warn('Auto-delete past appointment error:', err);
-              });
-              return; // Do not include in user view
+            // Mark status as Completed if past date and previously confirmed, keeping record intact
+            let status = data.status || 'Pending';
+            if (apptDate && apptDate < todayStr && status === 'Confirmed') {
+              status = 'Completed';
             }
 
             const createdAtMillis = data.createdAt?.toMillis ? data.createdAt.toMillis() : (data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0);
@@ -54,7 +89,7 @@ export default function BookingHistoryPage() {
               time: data.time || '',
               treatment: data.treatment || '',
               doctor: data.doctor || 'MDS Specialist',
-              status: data.status || 'Pending',
+              status,
               createdAtMillis,
             });
           });
@@ -78,47 +113,93 @@ export default function BookingHistoryPage() {
       );
 
       return () => unsubscribe();
-    } else {
-      // Guest: check localStorage, remove expired bookings
-      setLoading(false);
-      try {
-        const stored = localStorage.getItem('luminous_appointments');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            const filtered = parsed.filter(item => !item.date || item.date >= todayStr);
-            if (filtered.length !== parsed.length) {
-              localStorage.setItem('luminous_appointments', JSON.stringify(filtered));
+    } 
+
+    // Priority 2: Smart Link with Direct Appointment ID (Auto-recognize session & direct appointment lookup)
+    if (trackingApptId) {
+      setLoading(true);
+      const docRef = doc(db, 'appointments', trackingApptId);
+      getDoc(docRef).then((docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const currentHidden = getLocallyHiddenIds();
+
+          if (data.hiddenByUser !== true && data.hiddenFromUser !== true && !currentHidden.includes(docSnap.id)) {
+            const apptDate = data.date || '';
+            let status = data.status || 'Pending';
+            if (apptDate && apptDate < todayStr && status === 'Confirmed') {
+              status = 'Completed';
             }
-            setHistory(filtered);
-            return;
+            const createdAtMillis = data.createdAt?.toMillis ? data.createdAt.toMillis() : (data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0);
+            
+            setHistory([{
+              id: docSnap.id,
+              date: apptDate,
+              time: data.time || '',
+              treatment: data.treatment || '',
+              doctor: data.doctor || 'MDS Specialist',
+              status,
+              createdAtMillis,
+              isDirectTracked: true,
+            }]);
+          } else {
+            setHistory([]);
           }
         }
-      } catch {
-        // Ignore fallback
-      }
-      setHistory([]);
+        setLoading(false);
+      }).catch((err) => {
+        console.warn('Smart tracking lookup error:', err);
+        setLoading(false);
+      });
+      return;
     }
-  }, [user, authLoading]);
+
+    // Priority 3: Guest / unauthenticated fallback from localStorage
+    setLoading(false);
+    try {
+      const stored = localStorage.getItem('luminous_appointments');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(item => {
+            if (locallyHiddenIds.includes(item.id)) return false;
+            return !item.date || item.date >= todayStr || item.status !== 'Cancelled';
+          });
+          setHistory(filtered);
+          return;
+        }
+      }
+    } catch {
+      // Ignore fallback
+    }
+    setHistory([]);
+  }, [user, authLoading, trackingApptId, trackingUid]);
 
   const filteredHistory = filter === 'All' ? history : history.filter(h => 
     (filter === 'Upcoming' && (h.status === 'Pending' || h.status === 'Confirmed')) ||
-    (filter === 'Past' && (h.status === 'Completed' || h.status === 'Cancelled'))
+    (filter === 'Past' && (h.status === 'Completed' || h.status === 'Cancelled' || h.status === 'Cancelled by Patient'))
   );
 
   const handleDeleteCancelled = async (id: string) => {
-    // Remove from React state immediately
+    // 1. Immediately remove from React state for zero-lag UI response
     setHistory(prev => prev.filter(a => a.id !== id));
+    // 2. Persist in local hidden storage cache as a safety net
+    addLocallyHiddenId(id);
 
     if (user) {
-      // Signed-in: permanently delete from Firestore
+      // 3. Independent user-side hiding:
+      // Update the document in Firestore with hiddenByUser = true.
+      // This preserves the record completely in the Admin dashboard, reports, and database!
       try {
-        await deleteDoc(doc(db, 'appointments', id));
+        await updateDoc(doc(db, 'appointments', id), {
+          hiddenByUser: true,
+          hiddenByUserAt: new Date().toISOString(),
+        });
       } catch (err) {
-        console.error('Failed to delete cancelled appointment:', err);
+        console.warn('Soft-hide update flag error in Firestore, retained in local hide state:', err);
       }
     } else {
-      // Guest: remove from localStorage
+      // Guest: clean from localStorage copy
       try {
         const stored = localStorage.getItem('luminous_appointments');
         if (stored) {
@@ -183,6 +264,35 @@ export default function BookingHistoryPage() {
           </div>
         </ScrollReveal>
 
+        {/* Direct Smart Link Banner if arrived via WhatsApp tracking link */}
+        {trackingApptId && (
+          <ScrollReveal direction="up">
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 shadow-xs flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-emerald-600 text-white shrink-0 shadow-sm">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-emerald-950">
+                    Live Appointment Status
+                  </h3>
+                  <p className="text-xs text-emerald-800">
+                    Showing your verified booking records in real-time. Session auto-authenticated.
+                  </p>
+                </div>
+              </div>
+              {!user && (
+                <button
+                  onClick={() => signInWithGoogle()}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shrink-0 transition-all shadow-xs cursor-pointer"
+                >
+                  Save to Google Account
+                </button>
+              )}
+            </div>
+          </ScrollReveal>
+        )}
+
         {/* History List */}
         <div className="space-y-4">
           {filteredHistory.map((appt, idx) => {
@@ -198,13 +308,15 @@ export default function BookingHistoryPage() {
             else if (appt.status === 'Pending') statusClass += 'text-amber-700';
             else statusClass += 'text-red-700';
 
-            const isCancelled = appt.status === 'Cancelled';
+            const isCancelled = appt.status === 'Cancelled' || appt.status === 'Cancelled by Patient';
             const isHovered = hoveredId === appt.id;
 
             return (
               <ScrollReveal key={appt.id} direction="up" delay={idx * 100}>
                 <div
-                  className="bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1]/70 rounded-2xl p-6 shadow-sm border border-[#BDDBD1]/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 hover:shadow-md transition-shadow"
+                  className={`bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1]/70 rounded-2xl p-6 shadow-sm border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 hover:shadow-md transition-shadow ${
+                    appt.isDirectTracked ? 'border-emerald-400 ring-2 ring-emerald-400/20 shadow-md' : 'border-[#BDDBD1]/30'
+                  }`}
                   onMouseEnter={() => isCancelled && setHoveredId(appt.id)}
                   onMouseLeave={() => isCancelled && setHoveredId(null)}
                 >
@@ -214,7 +326,14 @@ export default function BookingHistoryPage() {
                       <CalendarIcon className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-[#2F3E3C] mb-1">{appt.treatment}</h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg font-bold text-[#2F3E3C]">{appt.treatment}</h3>
+                        {appt.isDirectTracked && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold uppercase tracking-wider">
+                            Direct Verified
+                          </span>
+                        )}
+                      </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-[#2F3E3C]/70">
                         <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#2F3E3C]/60" /> {appt.date} at {appt.time}</div>
                         <div className="flex items-center gap-1"><Activity className="w-4 h-4 text-[#2F3E3C]/60" /> {appt.doctor}</div>
@@ -286,5 +405,22 @@ export default function BookingHistoryPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function BookingHistoryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#FBF9F1] via-white to-[#E8F0F1]/40">
+          <div className="flex flex-col items-center gap-3">
+            <span className="w-8 h-8 rounded-full border-3 border-[#2F3E3C] border-t-transparent animate-spin" />
+            <p className="text-sm font-semibold text-[#2F3E3C]/70">Loading appointment records...</p>
+          </div>
+        </div>
+      }
+    >
+      <BookingHistoryContent />
+    </Suspense>
   );
 }

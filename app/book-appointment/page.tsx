@@ -10,14 +10,51 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
 import GlowButton from '@/components/GlowButton';
+import AlarmTimePicker from '@/components/AlarmTimePicker';
 
 const treatments = [
-  { id: 'general-dentistry', name: 'General & Preventive Dentistry' },
-  { id: 'endodontics', name: 'Endodontic Root Canal Therapy' },
-  { id: 'cosmetic', name: 'Aesthetic Dentistry' },
-  { id: 'implants', name: 'Osseointegrated Implants' },
-  { id: 'surgery', name: 'Surgical Extractions' },
-  { id: 'periodontal', name: 'Periodontal Scaling' },
+  { 
+    id: 'general-dentistry', 
+    name: 'General Checkup & Consultation',
+    shortDesc: 'Routine oral examination, digital X-rays, and customized treatment plans.',
+    detail: 'Ideal for catching hidden cavities early and getting expert doctor advice with zero pressure.'
+  },
+  { 
+    id: 'scaling-cleaning', 
+    name: 'Scaling & Teeth Cleaning',
+    shortDesc: 'Ultrasonic removal of hardened tartar, plaque, and stubborn food stains.',
+    detail: 'Keeps gums healthy, cures bad breath, and leaves your mouth feeling completely refreshed.'
+  },
+  { 
+    id: 'endodontics', 
+    name: 'Root Canal Treatment (RCT)',
+    shortDesc: 'Painless cleaning of infected tooth nerves to save teeth from extraction.',
+    detail: 'Single-visit, virtually painless therapy using computer-assisted rotary microscopes.'
+  },
+  { 
+    id: 'cosmetic', 
+    name: 'Teeth Whitening & Aesthetics',
+    shortDesc: 'Brightens discolored or yellow teeth by up to 5-8 shades safely.',
+    detail: 'Professional laser/gel dental whitening that restores a radiant, sparkling smile.'
+  },
+  { 
+    id: 'orthodontics', 
+    name: 'Braces & Clear Aligners',
+    shortDesc: 'Straightens crooked, crowded teeth or gaps with invisible aligners.',
+    detail: 'Modern smile design with discreet aligners or metal/ceramic braces for perfect alignment.'
+  },
+  { 
+    id: 'implants', 
+    name: 'Dental Implants',
+    shortDesc: 'Permanent titanium artificial roots placed into jawbone for missing teeth.',
+    detail: 'Looks, feels, and bites just like genuine natural teeth for a lifetime.'
+  },
+  { 
+    id: 'surgery', 
+    name: 'Wisdom Tooth & Surgical Extractions',
+    shortDesc: 'Gentle, pain-free extraction of painful or impacted wisdom teeth.',
+    detail: 'Carried out under local anesthesia with rapid same-day relief from severe jaw ache.'
+  },
 ];
 
 function BookAppointmentContent() {
@@ -30,7 +67,7 @@ function BookAppointmentContent() {
   const [formData, setFormData] = useState({
     treatment: preSelectedService || '',
     date: '',
-    time: '',
+    time: '09:00 AM',
     name: '',
     age: '',
     phone: '',
@@ -226,7 +263,7 @@ function BookAppointmentContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {treatments.map(t => {
                   const isSelected = formData.treatment === t.name;
-                  const btnClass = "p-4 rounded-xl border-2 text-left transition-all " + (isSelected ? 'border-[#2F3E3C] bg-gradient-to-r from-[#C7E7EC] via-[#BDDBD1] to-[#C7E7EC] shadow-md shadow-[#C7E7EC]/30 scale-[1.02]' : 'border-[#BDDBD1]/40 bg-white hover:border-[#2F3E3C]/50 hover:bg-[#FBF9F1]');
+                  const btnClass = "p-4 rounded-xl border-2 text-left transition-all " + (isSelected ? 'border-[#2F3E3C] bg-gradient-to-r from-[#C7E7EC] via-[#BDDBD1] to-[#C7E7EC] shadow-md shadow-[#C7E7EC]/30 scale-[1.01]' : 'border-[#BDDBD1]/40 bg-white hover:border-[#2F3E3C]/50 hover:bg-[#FBF9F1]');
                   const spanClass = "font-bold text-sm sm:text-base " + (isSelected ? 'text-[#2F3E3C]' : 'text-slate-900');
                   return (
                     <button
@@ -234,11 +271,33 @@ function BookAppointmentContent() {
                       onClick={() => setFormData({...formData, treatment: t.name})}
                       className={btnClass}
                     >
-                      <span className={spanClass}>{t.name}</span>
+                      <div className="flex flex-col gap-1">
+                        <span className={spanClass}>{t.name}</span>
+                        <p className="text-xs text-[#2F3E3C]/75 leading-relaxed font-normal">
+                          {t.shortDesc}
+                        </p>
+                      </div>
                     </button>
                   );
                 })}
               </div>
+
+              {/* Informative Beginner-Friendly Description Card for Selected Treatment */}
+              {formData.treatment && (
+                <div className="mt-5 p-4 rounded-2xl bg-gradient-to-r from-[#E8F0F1] via-[#FBF9F1] to-[#BDDBD1]/30 border border-[#BDDBD1]/50 shadow-xs animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-lg">💡</span>
+                    <div>
+                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#2F3E3C]">
+                        About {formData.treatment}:
+                      </h4>
+                      <p className="text-sm text-[#2F3E3C]/90 mt-1 font-medium leading-relaxed">
+                        {treatments.find(t => t.name === formData.treatment)?.detail || 'Specialized clinical treatment tailored for optimal oral health and patient comfort.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -265,21 +324,10 @@ function BookAppointmentContent() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-900 mb-2">Preferred Time Slot</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {['09:00 AM', '10:30 AM', '01:00 PM', '03:30 PM'].map(time => {
-                      const isSelected = formData.time === time;
-                      const timeClass = "py-3 px-2 rounded-xl border-2 text-sm transition-all " + (isSelected ? 'border-[#2F3E3C] bg-gradient-to-r from-[#C7E7EC] via-[#BDDBD1] to-[#C7E7EC] text-slate-950 font-extrabold shadow-md shadow-[#C7E7EC]/30 scale-105' : 'border-slate-300 bg-white text-slate-900 font-bold hover:border-[#2F3E3C]/60 hover:bg-[#FBF9F1]');
-                      return (
-                        <button
-                          key={time}
-                          onClick={() => setFormData({...formData, time})}
-                          className={timeClass}
-                        >
-                          {time}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <AlarmTimePicker 
+                    value={formData.time || '09:00 AM'} 
+                    onChange={(newTime) => setFormData(prev => ({ ...prev, time: newTime }))} 
+                  />
                 </div>
               </div>
             </div>
@@ -397,6 +445,17 @@ function BookAppointmentContent() {
                 <div className="flex justify-between border-b border-[#BDDBD1]/30 pb-2">
                   <span className="text-[#2F3E3C]/60">Phone</span>
                   <span className="font-semibold text-[#2F3E3C]">{formData.phone}</span>
+                </div>
+                <div className="border-b border-[#BDDBD1]/30 pb-2">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-[#2F3E3C]/60">User Notes / Instructions</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#BDDBD1]/40 text-[#2F3E3C]">
+                      {formData.notes?.trim() ? 'Included' : 'None'}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-[#2F3E3C] bg-white/70 p-3 rounded-xl border border-[#BDDBD1]/30 whitespace-pre-wrap break-words italic">
+                    {formData.notes?.trim() ? formData.notes : 'No custom notes or instructions specified.'}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-4">
