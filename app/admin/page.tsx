@@ -20,7 +20,9 @@ import {
   Check,
   X,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  FileText,
+  MessageSquareQuote
 } from 'lucide-react';
 import ScrollReveal from '@/components/ScrollReveal';
 import { db } from '@/lib/firebase';
@@ -52,6 +54,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [adjustingAppt, setAdjustingAppt] = useState<Appointment | null>(null);
+  const [viewingNotesAppt, setViewingNotesAppt] = useState<Appointment | null>(null);
   const [selectedAdjustTime, setSelectedAdjustTime] = useState<string>('');
   const [pendingTimeChange, setPendingTimeChange] = useState<{ appt: Appointment; oldTime: string; newTime: string } | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
@@ -294,13 +297,14 @@ export default function AdminDashboard() {
         appt.name || 'Anonymous',
         appt.phone ? `+${appt.phone}` : (appt.patientEmail || '-'),
         appt.treatment || 'Consultation',
+        appt.notes ? appt.notes.trim() : '-',
         `${appt.date || 'TBD'} ${appt.time ? `@ ${appt.time}` : ''}`,
         appt.status || 'Pending',
       ]);
 
       (autoTable as any)(doc, {
         startY: yPos + 10,
-        head: [['#', 'Patient Name', 'Contact', 'Treatment', 'Scheduled Date', 'Status']],
+        head: [['#', 'Patient Name', 'Contact', 'Treatment', 'Patient Notes', 'Scheduled Date', 'Status']],
         body: tableData,
         theme: 'striped',
         headStyles: {
@@ -311,26 +315,27 @@ export default function AdminDashboard() {
           halign: 'left',
         },
         styles: {
-          fontSize: 8.5,
-          cellPadding: 6,
+          fontSize: 8,
+          cellPadding: 5,
           textColor: [30, 41, 59],
         },
         columnStyles: {
-          0: { cellWidth: 25, halign: 'center' },
-          1: { cellWidth: 110, fontStyle: 'bold' },
-          2: { cellWidth: 100 },
-          3: { cellWidth: 120 },
-          4: { cellWidth: 90 },
-          5: { cellWidth: 70, fontStyle: 'bold', halign: 'center' },
+          0: { cellWidth: 20, halign: 'center' },
+          1: { cellWidth: 95, fontStyle: 'bold' },
+          2: { cellWidth: 80 },
+          3: { cellWidth: 95 },
+          4: { cellWidth: 105, fontStyle: 'italic' },
+          5: { cellWidth: 70 },
+          6: { cellWidth: 50, fontStyle: 'bold', halign: 'center' },
         },
         didParseCell: (data: any) => {
-          if (data.section === 'body' && data.column.index === 5) {
+          if (data.section === 'body' && data.column.index === 6) {
             const status = data.cell.raw;
             if (status === 'Confirmed' || status === 'Completed') {
               data.cell.styles.textColor = [16, 185, 129]; // Emerald
             } else if (status === 'Pending') {
               data.cell.styles.textColor = [217, 119, 6]; // Amber
-            } else if (status === 'Cancelled') {
+            } else if (status === 'Cancelled' || status === 'Cancelled by Patient') {
               data.cell.styles.textColor = [239, 68, 68]; // Red
             }
           }
@@ -438,7 +443,16 @@ export default function AdminDashboard() {
       if (filter === 'Cancelled') return a.status === 'Cancelled' || a.status === 'Cancelled by Patient';
       return a.status === filter;
     })
-    .filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.treatment.toLowerCase().includes(search.toLowerCase()));
+    .filter(a => {
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return (
+        a.name.toLowerCase().includes(s) || 
+        a.treatment.toLowerCase().includes(s) ||
+        (a.notes && a.notes.toLowerCase().includes(s)) ||
+        (a.phone && a.phone.includes(s))
+      );
+    });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FBF9F1] via-white to-[#E8F0F1]/40 p-4 sm:p-8 font-sans overflow-hidden">
@@ -654,6 +668,7 @@ export default function AdminDashboard() {
                 <tr className="bg-gradient-to-r from-[#E8F0F1] to-[#FBF9F1] border-b border-[#BDDBD1]/30 text-[#2F3E3C]/70 text-sm">
                   <th className="p-4 font-semibold">Patient</th>
                   <th className="p-4 font-semibold">Treatment</th>
+                  <th className="p-4 font-semibold">Patient Notes</th>
                   <th className="p-4 font-semibold">Date & Time</th>
                   <th className="p-4 font-semibold">Status</th>
                   <th className="p-4 font-semibold text-right">Actions</th>
@@ -662,7 +677,7 @@ export default function AdminDashboard() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-[#2F3E3C]/60">
+                    <td colSpan={6} className="p-8 text-center text-[#2F3E3C]/60">
                       <span className="inline-block w-5 h-5 rounded-full border-2 border-[#BDDBD1] border-t-transparent animate-spin mr-2" />
                       Loading real-time appointments...
                     </td>
@@ -685,6 +700,25 @@ export default function AdminDashboard() {
                       </td>
                       <td className="p-4">
                         <div className="text-sm font-medium text-[#2F3E3C] bg-gradient-to-r from-[#E8F0F1] to-[#C7E7EC]/40 inline-block px-3 py-1 rounded-md border border-[#BDDBD1]/30">{appt.treatment}</div>
+                      </td>
+                      <td className="p-4 max-w-[240px]">
+                        {appt.notes && appt.notes.trim() ? (
+                          <div 
+                            onClick={() => setViewingNotesAppt(appt)}
+                            className="group cursor-pointer p-2 rounded-xl bg-amber-50/80 hover:bg-amber-100/90 border border-amber-200/80 transition-all shadow-2xs hover:shadow-xs"
+                            title="Click to view full notes"
+                          >
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800 mb-0.5">
+                              <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Patient Note</span>
+                            </div>
+                            <p className="text-xs text-amber-950/85 line-clamp-2 italic leading-snug">
+                              &quot;{appt.notes}&quot;
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">No notes provided</span>
+                        )}
                       </td>
                       <td className="p-4">
                         <div className="text-sm font-semibold text-[#2F3E3C]">{appt.date}</div>
@@ -771,7 +805,7 @@ export default function AdminDashboard() {
                 })}
                 {!loading && filteredAppts.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-[#2F3E3C]/60">
+                    <td colSpan={6} className="p-8 text-center text-[#2F3E3C]/60">
                       No appointments found.
                     </td>
                   </tr>
@@ -781,6 +815,81 @@ export default function AdminDashboard() {
           </div>
         </div>
       </ScrollReveal>
+
+      {/* Patient Notes Quick View Modal */}
+      {viewingNotesAppt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2F3E3C]/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1] rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-[#BDDBD1]/50 relative animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setViewingNotesAppt(null)}
+              className="absolute top-5 right-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              aria-label="Close notes modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shadow-xs">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-[#2F3E3C]">Patient Instructions & Notes</h3>
+                <p className="text-xs text-[#2F3E3C]/60">Submitted during appointment booking</p>
+              </div>
+            </div>
+
+            <div className="bg-white/90 rounded-2xl p-4 border border-[#BDDBD1]/40 space-y-2 mb-4 text-xs text-slate-700">
+              <div className="flex justify-between border-b border-[#BDDBD1]/20 pb-1.5">
+                <span className="font-semibold text-slate-500">Patient Name:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.name}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#BDDBD1]/20 pb-1.5">
+                <span className="font-semibold text-slate-500">Selected Treatment:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.treatment}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#BDDBD1]/20 pb-1.5">
+                <span className="font-semibold text-slate-500">Date & Time:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.date} at {viewingNotesAppt.time}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-slate-500">Phone Contact:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.phone ? `+${viewingNotesAppt.phone}` : 'N/A'}</span>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#2F3E3C]/80 mb-2">
+                Patient Message / Medical Notes:
+              </label>
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-sm text-[#2F3E3C] leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
+                {viewingNotesAppt.notes || 'No custom notes provided.'}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setViewingNotesAppt(null)}
+                className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold text-[#2F3E3C] bg-white border border-[#BDDBD1]/60 hover:bg-[#FBF9F1] transition-all cursor-pointer shadow-xs"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const appt = viewingNotesAppt;
+                  setViewingNotesAppt(null);
+                  handleWhatsApp(appt);
+                }}
+                className="flex-1 py-3 px-4 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:brightness-105 transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Reply on WhatsApp</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Admin Time Adjustment Modal */}
       {adjustingAppt && (
