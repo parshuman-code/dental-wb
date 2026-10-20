@@ -23,8 +23,16 @@ Clinic Details:
 
 Guidelines & Rules:
 1. Provide concise, clear, reassuring answers about treatments, post-procedure tips, and clinic timings.
-2. If a patient expresses severe pain, bleeding, swelling, dental trauma, or asks how to visit Dr. Ananya Roy, politely encourage them to click the 'Book Appointment' button on the website immediately for urgent booking and consultation.
-3. Keep responses nicely formatted with short paragraphs or bullet points when helpful, without being overly wordy. Never provide dangerous self-medication prescriptions (e.g. antibiotic dosages) — always recommend a professional consultation.`;
+2. If a patient asks you to book an appointment, expresses that they don't know how to book, asks you to book on their behalf, or says phrases like:
+   - "I don't know how to book"
+   - "Book an appointment for me" / "Book for me"
+   - "Save my time"
+   - "Can you schedule a visit?"
+   - "Schedule my RCT / cleaning / consultation"
+   - "Please book a slot"
+   Then switch into 'Interactive Guided Booking Mode'. ALWAYS include the special signal tag [[START_INCHAT_BOOKING]] in your response. Reassure the user warmly (e.g. "Namaste! I'd love to help you book directly right here to save your time. Let's start by choosing your treatment below:") and provide [[START_INCHAT_BOOKING]].
+3. If a patient expresses severe pain, bleeding, swelling, dental trauma, reassure them and either offer direct booking with [[START_INCHAT_BOOKING]] or encourage immediate urgent consultation.
+4. Keep responses nicely formatted with short paragraphs or bullet points when helpful, without being overly wordy. Never provide dangerous self-medication prescriptions (e.g. antibiotic dosages) — always recommend a professional consultation.`;
 
 export async function POST(req: Request) {
   try {
@@ -48,15 +56,22 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    // Format conversation history for Gemini API
-    // Maps roles to 'user' or 'model'
-    const contents = messages.map((m: { role: string; content: string }) => ({
+    // Limit history to the last 6 messages to prevent latency degradation from large context
+    const recentMessages = messages.slice(-6);
+    const contents = recentMessages.map((m: { role: string; content: string }) => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content || '' }],
     }));
 
-    // Supported active models in order of priority & speed
-    const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    // High-speed, responsive model sequence:
+    // 1. gemini-3-flash-preview: ~1.5s ultra-fast execution
+    // 2. gemini-3.5-flash: high accuracy & low latency
+    // 3. gemini-3.5-flash-lite: reliable fallback
+    const modelsToTry = [
+      'gemini-3-flash-preview',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite'
+    ];
     let reply = '';
     let lastError: any = null;
 
@@ -67,7 +82,8 @@ export async function POST(req: Request) {
           contents,
           config: {
             systemInstruction: SYSTEM_INSTRUCTION,
-            temperature: 0.7,
+            temperature: 0.6,
+            maxOutputTokens: 250, // Keep responses crisp and snappy
           },
         });
 

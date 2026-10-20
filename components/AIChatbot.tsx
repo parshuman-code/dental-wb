@@ -2,14 +2,65 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { X, Send, Sparkles, User, Lock } from 'lucide-react';
+import Link from 'next/link';
+import { 
+  X, 
+  Send, 
+  Sparkles, 
+  User, 
+  Lock, 
+  Calendar, 
+  Clock, 
+  CheckCircle2, 
+  ChevronRight, 
+  AlertCircle,
+  Phone,
+  FileText,
+  RotateCcw
+} from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import AlarmTimePicker from '@/components/AlarmTimePicker';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-interface ChatMessage {
+export interface TreatmentOption {
+  id: string;
+  name: string;
+  shortDesc: string;
+}
+
+export const TREATMENTS: TreatmentOption[] = [
+  { id: 'general-dentistry', name: 'General Checkup & Consultation', shortDesc: 'Routine checkup & advice' },
+  { id: 'scaling-cleaning', name: 'Scaling & Teeth Cleaning', shortDesc: 'Ultrasonic plaque & stain removal' },
+  { id: 'endodontics', name: 'Root Canal Treatment (RCT)', shortDesc: 'Painless single-visit tooth savior' },
+  { id: 'cosmetic', name: 'Teeth Whitening & Aesthetics', shortDesc: 'Smile design & instant whitening' },
+  { id: 'orthodontics', name: 'Braces & Clear Aligners', shortDesc: 'Invisible aligners & teeth straightening' },
+  { id: 'implants', name: 'Dental Implants', shortDesc: 'Permanent titanium tooth roots' },
+  { id: 'surgery', name: 'Wisdom Tooth & Extractions', shortDesc: 'Gentle, pain-free tooth extraction' },
+];
+
+export interface BookingState {
+  step: 'treatment' | 'datetime' | 'details' | 'confirmed';
+  treatment: string;
+  date: string;
+  time: string;
+  patientName: string;
+  patientPhone: string;
+  patientAge: string;
+  patientEmail: string;
+  notes: string;
+  bookingRef?: string;
+}
+
+export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
   content: string;
   timestamp: string;
+  bookingWidget?: {
+    type: 'booking-flow';
+    state: BookingState;
+  };
 }
 
 const INITIAL_MESSAGES: ChatMessage[] = [
@@ -17,7 +68,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
     id: 'welcome-1',
     role: 'model',
     content: "Namaste! ✨ I'm DenTo, your 24/7 AI Receptionist at Aura Dental Clinic. How can I help you today with treatments, tooth pain, or booking an appointment with Dr. Ananya Roy?",
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    timestamp: 'Just now',
   },
 ];
 
@@ -29,24 +80,54 @@ export default function AIChatbot() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [submittingBooking, setSubmittingBooking] = useState(false);
+  const [todayStr, setTodayStr] = useState('');
+
+  // Active in-chat booking wizard state
+  const [activeBooking, setActiveBooking] = useState<BookingState | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const bookingCardRef = useRef<HTMLDivElement>(null);
 
   // Check if user is authenticated (treat null user as logged out)
   const isAuthenticated = !!user;
+
+  useEffect(() => {
+    // Safely compute on client mount to prevent SSR/prerender mismatch
+    setTodayStr(new Date().toISOString().split('T')[0]);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Focus chat input only on first open — never re-steal focus while user is typing
+  const hasFocusedOnOpenRef = useRef(false);
+
   useEffect(() => {
     if (isOpen && !isClosing) {
       scrollToBottom();
-      if (isAuthenticated) {
-        inputRef.current?.focus();
+      // Only auto-focus the chat input once (when the widget first opens)
+      // Never steal focus when a booking widget is active or user may already be typing
+      if (isAuthenticated && !hasFocusedOnOpenRef.current && !activeBooking) {
+        hasFocusedOnOpenRef.current = true;
+        // Small delay so the pop-in animation completes first
+        setTimeout(() => inputRef.current?.focus(), 180);
       }
+    } else {
+      hasFocusedOnOpenRef.current = false;
     }
-  }, [isOpen, isClosing, messages, isLoading, isAuthenticated]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isClosing]);
+
+  // Auto-scroll whenever new messages are added (e.g. after typing delay)
+  useEffect(() => {
+    if (isOpen && !isClosing) {
+      scrollToBottom();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   const handleOpen = () => {
     setIsClosing(false);
@@ -72,6 +153,55 @@ export default function AIChatbot() {
     }
   };
 
+  // Helper to start the in-chat booking flow
+  const startInChatBooking = () => {
+    const today = new Date();
+    // Default appointment date to tomorrow or today
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateStr = tomorrow.toISOString().split('T')[0];
+
+    const initialBooking: BookingState = {
+      step: 'treatment',
+      treatment: '',
+      date: dateStr,
+      time: '10:00 AM',
+      patientName: user?.displayName || '',
+      patientEmail: user?.email || '',
+      patientPhone: '',
+      patientAge: '',
+      notes: '',
+    };
+    setActiveBooking(initialBooking);
+  };
+
+  // Client-side intent detection for booking on behalf / save time / help booking
+  const checkIsBookingIntent = (text: string) => {
+    const lower = text.toLowerCase();
+    const triggers = [
+      'book',
+      'appointment',
+      'schedule',
+      'dont know how to book',
+      "don't know how to book",
+      'book for me',
+      'book on my behalf',
+      'save my time',
+      'save time',
+      'reserve a slot',
+      'can you book',
+      'fix an appointment',
+      'slot',
+      'treatment booking',
+      'consultation'
+    ];
+    return triggers.some(t => lower.includes(t));
+  };
+
+  // Minimum time (ms) the typing indicator shows before the reply appears.
+  // Prevents instant message pop that feels jarring and causes visual overlap.
+  const MIN_TYPING_DELAY_MS = 900;
+
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!isAuthenticated) {
@@ -94,6 +224,12 @@ export default function AIChatbot() {
     setInput('');
     setIsLoading(true);
 
+    // Check if user specifically requested booking assistance
+    const isLocalBookingIntent = checkIsBookingIntent(trimmed);
+
+    // Record when we started so we can enforce min typing display time
+    const requestStart = Date.now();
+
     try {
       const payloadMessages = newMessages.map((m) => ({
         role: m.role,
@@ -107,34 +243,141 @@ export default function AIChatbot() {
       });
 
       const data = await res.json();
+      let rawReply: string = data.reply || "I'm here to assist! Please choose your preferred options.";
+
+      // Check for Gemini booking trigger signal or local booking intent
+      const hasBookingSignal = rawReply.includes('[[START_INCHAT_BOOKING]]') || isLocalBookingIntent;
+      const cleanReply = rawReply.replace(/\[\[START_INCHAT_BOOKING\]\]/g, '').trim();
+
+      // Ensure the typing indicator shows for at least MIN_TYPING_DELAY_MS
+      // so messages don't overlap or appear instantly jarring
+      const elapsed = Date.now() - requestStart;
+      if (elapsed < MIN_TYPING_DELAY_MS) {
+        await new Promise((resolve) => setTimeout(resolve, MIN_TYPING_DELAY_MS - elapsed));
+      }
 
       const botMsg: ChatMessage = {
         id: `bot-${Date.now()}`,
         role: 'model',
-        content:
-          data.reply ||
-          "I'm here to assist! Please click 'Book Appointment' or ask me about any dental treatment.",
+        content: cleanReply || "I would be delighted to help you schedule your appointment with Dr. Ananya Roy right now!",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
       setMessages((prev) => [...prev, botMsg]);
+
+      if (hasBookingSignal && (!activeBooking || activeBooking.step === 'confirmed')) {
+        // Small stagger so the booking widget appears after the bot reply renders
+        setTimeout(() => startInChatBooking(), 250);
+      }
     } catch (err) {
       console.error('Chat error:', err);
+
+      // Enforce minimum delay even on error so the typing indicator doesn't flash
+      const elapsed = Date.now() - requestStart;
+      if (elapsed < MIN_TYPING_DELAY_MS) {
+        await new Promise((resolve) => setTimeout(resolve, MIN_TYPING_DELAY_MS - elapsed));
+      }
+
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         role: 'model',
         content:
-          "I'm experiencing a small delay. For severe tooth pain or emergency booking with Dr. Ananya Roy, please click 'Book Appointment' on our page!",
+          "I'm here with you! Let's get your appointment scheduled with Dr. Ananya Roy directly right here.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMsg]);
+      if (isLocalBookingIntent && (!activeBooking || activeBooking.step === 'confirmed')) {
+        setTimeout(() => startInChatBooking(), 250);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
+  // -------------------------------------------------------------
+  // In-Chat Booking Step Handlers
+  // -------------------------------------------------------------
+  const handleSelectTreatment = (treatmentName: string) => {
+    if (!activeBooking) return;
+    setActiveBooking({
+      ...activeBooking,
+      treatment: treatmentName,
+      step: 'datetime',
+    });
+  };
+
+  const handleConfirmDateTime = () => {
+    if (!activeBooking) return;
+    if (!activeBooking.date) {
+      alert('Please select an appointment date.');
+      return;
+    }
+    setActiveBooking({
+      ...activeBooking,
+      step: 'details',
+    });
+  };
+
+  const handleFinalBookingSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeBooking || !user) return;
+
+    if (!activeBooking.patientName.trim()) {
+      alert('Please provide your name.');
+      return;
+    }
+    if (!activeBooking.patientPhone.trim()) {
+      alert('Please provide your contact phone number.');
+      return;
+    }
+
+    try {
+      setSubmittingBooking(true);
+      const refCode = `LD-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const appointmentData = {
+        referenceCode: refCode,
+        treatment: activeBooking.treatment,
+        date: activeBooking.date,
+        time: activeBooking.time,
+        patientName: activeBooking.patientName,
+        patientAge: activeBooking.patientAge || 'Not specified',
+        patientPhone: activeBooking.patientPhone,
+        notes: activeBooking.notes ? `[Booked via DenTo AI]: ${activeBooking.notes}` : '[Booked via DenTo AI Receptionist]',
+        status: 'Pending',
+        doctor: 'Dr. Ananya Roy (MDS)',
+        createdAt: serverTimestamp(),
+        uid: user.uid,
+        patientEmail: user.email || activeBooking.patientEmail || '',
+      };
+
+      await addDoc(collection(db, 'appointments'), appointmentData);
+
+      // Transition to confirmed card
+      setActiveBooking({
+        ...activeBooking,
+        step: 'confirmed',
+        bookingRef: refCode,
+      });
+
+      // Add a celebratory bot message
+      const confirmBotMsg: ChatMessage = {
+        id: `bot-confirm-${Date.now()}`,
+        role: 'model',
+        content: `🎉 Excellent! Your appointment request for **${activeBooking.treatment}** on **${activeBooking.date} at ${activeBooking.time}** has been securely submitted to our front desk.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages(prev => [...prev, confirmBotMsg]);
+
+    } catch (err) {
+      console.error('In-chat booking submission error:', err);
+      alert('Unable to submit booking right now. Please try again or use the main booking page.');
+    } finally {
+      setSubmittingBooking(false);
+    }
+  };
+
   return (
-    /* Absolutely fixed to viewport bottom-right corner with max z-index, immune to scrolling */
     <aside 
       aria-label="DenTo AI Dental Assistant"
       style={{
@@ -152,7 +395,7 @@ export default function AIChatbot() {
           role="dialog"
           aria-modal="true"
           aria-label="DenTo AI Receptionist Chat"
-          className={`pointer-events-auto mb-3 w-[88vw] sm:w-[340px] h-[465px] max-h-[75vh] bg-white rounded-2xl shadow-[0_20px_50px_-10px_rgba(23,37,35,0.45)] border border-[#BDDBD1]/70 flex flex-col overflow-hidden relative ${
+          className={`pointer-events-auto mb-3 w-[92vw] sm:w-[390px] h-[540px] max-h-[82vh] bg-white rounded-2xl shadow-[0_20px_50px_-10px_rgba(23,37,35,0.45)] border border-[#BDDBD1]/70 flex flex-col overflow-hidden relative ${
             isClosing ? 'dento-pop-out' : 'dento-pop-in'
           }`}
         >
@@ -182,12 +425,25 @@ export default function AIChatbot() {
                   </span>
                 </h2>
                 <p className="text-[10px] text-[#D1E2DE] font-normal tracking-tight">
-                  Aura Dental Clinic • Vashi
+                  Aura Dental Clinic • Dr. Ananya Roy
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
+              {/* Quick booking button in header */}
+              {isAuthenticated && !activeBooking && (
+                <button
+                  type="button"
+                  onClick={startInChatBooking}
+                  className="px-2 py-1 bg-white/15 hover:bg-white/25 border border-white/20 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                  title="Book an appointment directly in chat"
+                >
+                  <Calendar className="w-3 h-3 text-[#BDDBD1]" />
+                  <span>Book In-Chat</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleClose}
@@ -204,25 +460,21 @@ export default function AIChatbot() {
           <div className="bg-[#EBF3F1] px-3.5 py-1.5 border-b border-[#BDDBD1]/50 flex items-center justify-between text-[11px] text-[#1E2D2A] z-10 shrink-0">
             <div className="flex items-center gap-1.5 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Dr. Ananya Roy (MDS) Desk</span>
+              <span>Online Consultation & Booking</span>
             </div>
-            <a
-              href="#book"
-              onClick={() => {
-                const el = document.getElementById('book') || document.querySelector('a[href="/appointments"]');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
+            <Link
+              href="/book-appointment"
               className="text-[11px] font-bold text-[#172523] hover:underline"
             >
-              Book Visit →
-            </a>
+              Full Booking Page →
+            </Link>
           </div>
 
           {/* Central Area: Messages + Shaded Glassmorphism Auth Overlay */}
           <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden bg-gradient-to-b from-[#FAF8F3] via-[#FFFFFF] to-[#EFF5F4]">
-            {/* Background Chat Messages with Shaded Blur when logged out */}
+            {/* Background Chat Messages */}
             <div
-              className={`flex-1 p-3 overflow-y-auto space-y-2.5 select-text transition-all duration-300 ${
+              className={`flex-1 p-3 overflow-y-auto space-y-3 select-text transition-all duration-300 ${
                 !isAuthenticated
                   ? 'filter blur-[4px] opacity-40 grayscale-[25%] pointer-events-none select-none'
                   : ''
@@ -254,7 +506,7 @@ export default function AIChatbot() {
 
                     {/* Bubble */}
                     <div
-                      className={`max-w-[82%] rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xs ${
+                      className={`max-w-[84%] rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xs ${
                         isUser
                           ? 'bg-gradient-to-br from-[#1C2C29] via-[#243532] to-[#172523] text-white rounded-tr-none border border-[#2D4541]'
                           : 'bg-white text-[#152220] border border-[#BDDBD1]/70 rounded-tl-none font-medium'
@@ -272,6 +524,311 @@ export default function AIChatbot() {
                   </div>
                 );
               })}
+
+              {/* ------------------------------------------------------------- */}
+              {/* EMBEDDED IN-CHAT BOOKING WIDGET COMPONENT */}
+              {/* ------------------------------------------------------------- */}
+              {activeBooking && (
+                <div 
+                  ref={bookingCardRef}
+                  tabIndex={-1}
+                  className="animate-in fade-in slide-in-from-bottom-2 duration-300 my-2 relative z-20 outline-none"
+                >
+                  <div className="bg-gradient-to-br from-white via-[#FAFDFB] to-[#F2F8F6] border-2 border-[#2F3E3C]/20 rounded-2xl p-3.5 shadow-md">
+                    
+                    {/* Widget Header Banner */}
+                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#BDDBD1]/40">
+                      <div className="flex items-center gap-1.5">
+                        <div className="p-1 rounded-md bg-[#2F3E3C] text-white">
+                          <Calendar className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-bold text-[#2F3E3C]">
+                            {activeBooking.step === 'confirmed' ? 'Booking Confirmed' : 'Interactive In-Chat Booking'}
+                          </div>
+                          <div className="text-[9px] text-[#2F3E3C]/60">
+                            {activeBooking.step === 'treatment' && 'Step 1 of 3: Choose Treatment'}
+                            {activeBooking.step === 'datetime' && 'Step 2 of 3: Select Date & Time'}
+                            {activeBooking.step === 'details' && 'Step 3 of 3: Confirm Patient Info'}
+                            {activeBooking.step === 'confirmed' && 'Instant Appointment Record Created'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {activeBooking.step !== 'confirmed' && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveBooking(null)}
+                          className="text-gray-400 hover:text-gray-600 text-xs px-1.5 py-0.5 rounded hover:bg-gray-100 cursor-pointer"
+                          title="Dismiss booking widget"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Step A: Treatment Selector Chips */}
+                    {activeBooking.step === 'treatment' && (
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-semibold text-[#2F3E3C]/90">
+                          Please select your required dental treatment:
+                        </p>
+                        <div className="grid grid-cols-1 gap-1.5 max-h-[220px] overflow-y-auto pr-1">
+                          {TREATMENTS.map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => handleSelectTreatment(t.name)}
+                              className="w-full text-left p-2 rounded-xl border border-[#BDDBD1]/70 bg-white hover:bg-[#E8F0F1] hover:border-[#2F3E3C]/50 transition-all cursor-pointer group flex items-center justify-between"
+                            >
+                              <div>
+                                <div className="text-xs font-bold text-[#2F3E3C] group-hover:text-emerald-950">
+                                  {t.name}
+                                </div>
+                                <div className="text-[10px] text-[#2F3E3C]/60">
+                                  {t.shortDesc}
+                                </div>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-[#2F3E3C]/40 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step B: Date & Compact Time Wheel Picker */}
+                    {activeBooking.step === 'datetime' && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-[#2F3E3C]">
+                            Selected: <span className="text-emerald-800">{activeBooking.treatment}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveBooking({ ...activeBooking, step: 'treatment' })}
+                            className="text-[10px] text-[#2F3E3C]/70 underline hover:text-[#2F3E3C] flex items-center gap-0.5"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" /> Change
+                          </button>
+                        </div>
+
+                        {/* Date Input */}
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#2F3E3C]/70 mb-1">
+                            Appointment Date
+                          </label>
+                          <input
+                            type="date"
+                            min={todayStr}
+                            value={activeBooking.date}
+                            onChange={(e) => setActiveBooking({ ...activeBooking, date: e.target.value })}
+                            className="w-full text-xs font-medium px-2.5 py-1.5 bg-white border border-[#BDDBD1] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2F3E3C] text-[#2F3E3C]"
+                          />
+                        </div>
+
+                        {/* Interactive Compact Alarm Wheel Picker */}
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#2F3E3C]/70 mb-1">
+                            Appointment Time
+                          </label>
+                          <AlarmTimePicker
+                            value={activeBooking.time}
+                            onChange={(t) => setActiveBooking({ ...activeBooking, time: t })}
+                          />
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setActiveBooking({ ...activeBooking, step: 'treatment' })}
+                            className="flex-1 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleConfirmDateTime}
+                            className="flex-1 py-1.5 rounded-lg bg-[#2F3E3C] hover:bg-[#1f2a28] text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <span>Next: Patient Info</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step C: Patient Details (Pre-filled from logged in user) */}
+                    {activeBooking.step === 'details' && (
+                      <form onSubmit={handleFinalBookingSubmit} autoComplete="off" className="space-y-2.5">
+                        <div className="bg-[#EBF3F1]/70 p-2 rounded-lg text-[10px] text-[#2F3E3C] space-y-0.5 border border-[#BDDBD1]/50">
+                          <div><strong>Treatment:</strong> {activeBooking.treatment}</div>
+                          <div><strong>Date & Time:</strong> {activeBooking.date} at {activeBooking.time}</div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#2F3E3C]/80 mb-0.5">
+                            Full Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            name="dento_patient_name"
+                            id="dento_patient_name"
+                            required
+                            autoComplete="off"
+                            autoCorrect="on"
+                            autoCapitalize="words"
+                            spellCheck={true}
+                            value={activeBooking.patientName}
+                            onChange={(e) => setActiveBooking({ ...activeBooking, patientName: e.target.value })}
+                            placeholder="Patient's Full Name"
+                            className="w-full text-xs font-medium px-2.5 py-1.5 bg-white border border-[#BDDBD1] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2F3E3C] text-[#2F3E3C]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#2F3E3C]/80 mb-0.5">
+                            Email (Pre-filled)
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            tabIndex={-1}
+                            autoComplete="off"
+                            value={user?.email || activeBooking.patientEmail || ''}
+                            className="w-full text-xs font-medium px-2.5 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-600 cursor-not-allowed select-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <label className="block text-[10px] font-bold text-[#2F3E3C]/80 mb-0.5">
+                              Phone Number <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="tel"
+                              name="dento_patient_phone"
+                              id="dento_patient_phone"
+                              required
+                              autoComplete="off"
+                              inputMode="numeric"
+                              value={activeBooking.patientPhone}
+                              onChange={(e) => {
+                                // Only allow digits, +, spaces, dashes
+                                const val = e.target.value.replace(/[^\d+\s\-]/g, '');
+                                setActiveBooking({ ...activeBooking, patientPhone: val });
+                              }}
+                              placeholder="e.g. 9876543210"
+                              className="w-full text-xs font-medium px-2.5 py-1.5 bg-white border border-[#BDDBD1] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2F3E3C] text-[#2F3E3C]"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#2F3E3C]/80 mb-0.5">
+                              Age
+                            </label>
+                            <input
+                              type="text"
+                              name="dento_patient_age"
+                              id="dento_patient_age"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              value={activeBooking.patientAge}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 3);
+                                setActiveBooking({ ...activeBooking, patientAge: val });
+                              }}
+                              placeholder="Age"
+                              className="w-full text-xs font-medium px-2.5 py-1.5 bg-white border border-[#BDDBD1] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2F3E3C] text-[#2F3E3C]"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#2F3E3C]/80 mb-0.5">
+                            Any symptoms or special notes?
+                          </label>
+                          <textarea
+                            rows={2}
+                            name="dento_patient_notes"
+                            id="dento_patient_notes"
+                            autoComplete="off"
+                            autoCorrect="on"
+                            spellCheck={true}
+                            value={activeBooking.notes}
+                            onChange={(e) => setActiveBooking({ ...activeBooking, notes: e.target.value })}
+                            placeholder="Tooth pain, sensitivity, preferred doctor notes..."
+                            className="w-full text-xs font-medium px-2.5 py-1.5 bg-white border border-[#BDDBD1] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2F3E3C] text-[#2F3E3C] resize-none"
+                          />
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setActiveBooking({ ...activeBooking, step: 'datetime' })}
+                            className="flex-1 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={submittingBooking}
+                            className="flex-2 py-2 rounded-lg bg-gradient-to-r from-[#2F3E3C] to-[#1C2C29] hover:brightness-110 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            {submittingBooking ? (
+                              <>
+                                <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                <span>Booking in Firestore...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Confirm & Submit Booking</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* Step D: Confirmation Card with Instant Tracking Link */}
+                    {activeBooking.step === 'confirmed' && (
+                      <div className="text-center py-2 space-y-2.5">
+                        <div className="w-10 h-10 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-[#2F3E3C]">Appointment Request Received!</h4>
+                          <p className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 py-0.5 px-2 rounded-md inline-block mt-1">
+                            Reference: {activeBooking.bookingRef}
+                          </p>
+                        </div>
+
+                        <div className="bg-white/80 border border-[#BDDBD1]/50 rounded-xl p-2.5 text-left text-[11px] text-[#2F3E3C] space-y-1">
+                          <div><strong>Patient:</strong> {activeBooking.patientName}</div>
+                          <div><strong>Treatment:</strong> {activeBooking.treatment}</div>
+                          <div><strong>Scheduled:</strong> {activeBooking.date} at {activeBooking.time}</div>
+                          <div><strong>Status:</strong> <span className="text-amber-600 font-bold">Pending Confirmation</span></div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5 pt-1">
+                          <Link
+                            href={`/booking-history?phone=${encodeURIComponent(activeBooking.patientPhone)}`}
+                            className="w-full py-1.5 rounded-lg bg-[#2F3E3C] text-white text-xs font-bold hover:brightness-110 shadow-xs flex items-center justify-center gap-1"
+                          >
+                            <span>Track Appointment Status →</span>
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setActiveBooking(null)}
+                            className="text-[11px] text-slate-500 hover:text-slate-700 py-1"
+                          >
+                            Close Booking Card
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Lightweight Skeleton Loading UI */}
               {isLoading && (
@@ -313,7 +870,7 @@ export default function AIChatbot() {
                     Sign in to chat with DenTo
                   </h3>
                   <p className="text-[11px] text-gray-600 leading-snug mb-3.5 px-1">
-                    You need to log in to use this feature and receive personalized 24/7 dental assistance.
+                    You need to log in to use this feature, chat with DenTo, and book appointments directly.
                   </p>
 
                   {/* Blue Sign In Button */}
@@ -340,6 +897,7 @@ export default function AIChatbot() {
           {/* Input Area with High Contrast & Dark Palette */}
           <form
             onSubmit={handleSend}
+            autoComplete="off"
             className={`p-2.5 bg-white border-t border-[#BDDBD1]/60 flex items-center gap-2 pointer-events-auto z-10 shrink-0 ${
               !isAuthenticated ? 'opacity-40 pointer-events-none' : ''
             }`}
@@ -347,9 +905,15 @@ export default function AIChatbot() {
             <input
               ref={inputRef}
               type="text"
+              name="dento_chat_msg"
+              id="dento_chat_msg"
+              autoComplete="off"
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              spellCheck={true}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isAuthenticated ? "Ask about treatments, pain, or appointments..." : "Please sign in to chat..."}
+              placeholder={isAuthenticated ? "Ask or say 'Book an appointment for me'..." : "Please sign in to chat..."}
               className="flex-1 text-xs bg-[#F5F8F7] border border-[#BDDBD1]/80 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#172523]/40 focus:border-[#172523] transition-all text-[#172523] font-medium placeholder-[#718883]"
               disabled={isLoading || !isAuthenticated}
             />
