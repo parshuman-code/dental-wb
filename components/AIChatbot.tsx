@@ -36,7 +36,7 @@ export const TREATMENTS: TreatmentOption[] = [
   { id: 'cosmetic', name: 'Teeth Whitening & Aesthetics', shortDesc: 'Smile design & instant whitening' },
   { id: 'orthodontics', name: 'Braces & Clear Aligners', shortDesc: 'Invisible aligners & teeth straightening' },
   { id: 'implants', name: 'Dental Implants', shortDesc: 'Permanent titanium tooth roots' },
-  { id: 'surgery', name: 'Wisdom Tooth & Extractions', shortDesc: 'Gentle, pain-free tooth extraction' },
+  { id: 'surgery', name: 'Wisdom Tooth & Surgical Extractions', shortDesc: 'Gentle, pain-free tooth extraction' },
 ];
 
 export interface BookingState {
@@ -57,6 +57,7 @@ export interface ChatMessage {
   role: 'user' | 'model';
   content: string;
   timestamp: string;
+  recommendedTreatment?: string;
   bookingWidget?: {
     type: 'booking-flow';
     state: BookingState;
@@ -153,31 +154,73 @@ export default function AIChatbot() {
     }
   };
 
-  // Helper to start the in-chat booking flow
-  const startInChatBooking = () => {
+  // Map incoming treatment name/alias to our valid TREATMENTS list
+  const matchTreatment = (nameOrKeyword: string): string => {
+    if (!nameOrKeyword) return '';
+    const clean = nameOrKeyword.trim().toLowerCase();
+    
+    // Direct or partial match on TREATMENTS
+    const direct = TREATMENTS.find(t => 
+      t.name.toLowerCase() === clean || 
+      clean.includes(t.name.toLowerCase()) || 
+      t.name.toLowerCase().includes(clean)
+    );
+    if (direct) return direct.name;
+
+    // Keyword heuristic matching
+    if (clean.includes('root canal') || clean.includes('rct') || clean.includes('pain') || clean.includes('nerve') || clean.includes('dard')) {
+      return 'Root Canal Treatment (RCT)';
+    }
+    if (clean.includes('clean') || clean.includes('scaling') || clean.includes('tartar') || clean.includes('plaque') || clean.includes('khoon') || clean.includes('bleeding')) {
+      return 'Scaling & Teeth Cleaning';
+    }
+    if (clean.includes('whiten') || clean.includes('aesthetic') || clean.includes('shine') || clean.includes('yellow') || clean.includes('peela') || clean.includes('cosmetic')) {
+      return 'Teeth Whitening & Aesthetics';
+    }
+    if (clean.includes('brace') || clean.includes('align') || clean.includes('tedhe') || clean.includes('crooked')) {
+      return 'Braces & Clear Aligners';
+    }
+    if (clean.includes('implant') || clean.includes('missing') || clean.includes('tooth replacement')) {
+      return 'Dental Implants';
+    }
+    if (clean.includes('wisdom') || clean.includes('extract') || clean.includes('surgery') || clean.includes('akal')) {
+      return 'Wisdom Tooth & Extractions';
+    }
+    if (clean.includes('checkup') || clean.includes('consult') || clean.includes('sensitivity')) {
+      return 'General Checkup & Consultation';
+    }
+
+    return 'General Checkup & Consultation';
+  };
+
+  // Helper to start the in-chat booking flow with optional pre-filled treatment
+  const startInChatBooking = (prefilledTreatment?: string) => {
     const today = new Date();
     // Default appointment date to tomorrow or today
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const dateStr = tomorrow.toISOString().split('T')[0];
 
+    const matched = prefilledTreatment ? matchTreatment(prefilledTreatment) : '';
+
     const initialBooking: BookingState = {
-      step: 'treatment',
-      treatment: '',
+      // If a treatment was matched and pre-filled, skip straight to date/time selection!
+      step: matched ? 'datetime' : 'treatment',
+      treatment: matched || '',
       date: dateStr,
       time: '10:00 AM',
       patientName: user?.displayName || '',
       patientEmail: user?.email || '',
       patientPhone: '',
       patientAge: '',
-      notes: '',
+      notes: matched ? `[AI Recommended]: ${matched}` : '',
     };
     setActiveBooking(initialBooking);
   };
 
-  // Client-side intent detection for booking on behalf / save time / help booking
+  // Client-side intent detection for booking on behalf / save time / help booking or agreeing
   const checkIsBookingIntent = (text: string) => {
-    const lower = text.toLowerCase();
+    const lower = text.toLowerCase().trim();
     const triggers = [
       'book',
       'appointment',
@@ -193,9 +236,28 @@ export default function AIChatbot() {
       'fix an appointment',
       'slot',
       'treatment booking',
-      'consultation'
+      'consultation',
+      // Multi-language affirmation triggers
+      'yes',
+      'yes please',
+      'yeah',
+      'yup',
+      'sure',
+      'haan',
+      'ha',
+      'haanji',
+      'kar do',
+      'book kar do',
+      'proceed',
+      'book it',
+      'ok book',
+      'schedule it',
+      'chale ga',
+      'chalega',
+      'ho',
+      'nakki'
     ];
-    return triggers.some(t => lower.includes(t));
+    return triggers.some(t => lower === t || lower.includes(t));
   };
 
   // Minimum time (ms) the typing indicator shows before the reply appears.
@@ -224,7 +286,7 @@ export default function AIChatbot() {
     setInput('');
     setIsLoading(true);
 
-    // Check if user specifically requested booking assistance
+    // Check if user specifically requested booking assistance or agreed
     const isLocalBookingIntent = checkIsBookingIntent(trimmed);
 
     // Record when we started so we can enforce min typing display time
@@ -245,9 +307,26 @@ export default function AIChatbot() {
       const data = await res.json();
       let rawReply: string = data.reply || "I'm here to assist! Please choose your preferred options.";
 
-      // Check for Gemini booking trigger signal or local booking intent
-      const hasBookingSignal = rawReply.includes('[[START_INCHAT_BOOKING]]') || isLocalBookingIntent;
-      const cleanReply = rawReply.replace(/\[\[START_INCHAT_BOOKING\]\]/g, '').trim();
+      // Extract recommendation tag if any: [[RECOMMEND_TREATMENT: <Treatment>]]
+      let recommendedTreatment = '';
+      const recMatch = rawReply.match(/\[\[RECOMMEND_TREATMENT:\s*([^\]]+)\]\]/i);
+      if (recMatch && recMatch[1]) {
+        recommendedTreatment = recMatch[1].trim();
+      }
+
+      // Extract booking signal tag if any: [[START_INCHAT_BOOKING: <Treatment>]] or [[START_INCHAT_BOOKING]]
+      let bookingSignalTreatment = '';
+      const bookingSignalMatch = rawReply.match(/\[\[START_INCHAT_BOOKING(?::\s*([^\]]+))?\]\]/i);
+      const hasBookingSignal = !!bookingSignalMatch || (isLocalBookingIntent && !!recommendedTreatment);
+      if (bookingSignalMatch && bookingSignalMatch[1]) {
+        bookingSignalTreatment = bookingSignalMatch[1].trim();
+      }
+
+      // Clean out system signal tags from user-facing text
+      const cleanReply = rawReply
+        .replace(/\[\[START_INCHAT_BOOKING(?::\s*[^\]]+)?\]\]/gi, '')
+        .replace(/\[\[RECOMMEND_TREATMENT:\s*[^\]]+\]\]/gi, '')
+        .trim();
 
       // Ensure the typing indicator shows for at least MIN_TYPING_DELAY_MS
       // so messages don't overlap or appear instantly jarring
@@ -261,13 +340,16 @@ export default function AIChatbot() {
         role: 'model',
         content: cleanReply || "I would be delighted to help you schedule your appointment with Dr. Ananya Roy right now!",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        recommendedTreatment: recommendedTreatment ? matchTreatment(recommendedTreatment) : undefined,
       };
 
       setMessages((prev) => [...prev, botMsg]);
 
+      const treatmentToUse = bookingSignalTreatment || recommendedTreatment;
+
       if (hasBookingSignal && (!activeBooking || activeBooking.step === 'confirmed')) {
         // Small stagger so the booking widget appears after the bot reply renders
-        setTimeout(() => startInChatBooking(), 250);
+        setTimeout(() => startInChatBooking(treatmentToUse), 250);
       }
     } catch (err) {
       console.error('Chat error:', err);
@@ -435,7 +517,7 @@ export default function AIChatbot() {
               {isAuthenticated && !activeBooking && (
                 <button
                   type="button"
-                  onClick={startInChatBooking}
+                  onClick={() => startInChatBooking()}
                   className="px-2 py-1 bg-white/15 hover:bg-white/25 border border-white/20 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
                   title="Book an appointment directly in chat"
                 >
@@ -513,6 +595,32 @@ export default function AIChatbot() {
                       }`}
                     >
                       <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+
+                      {/* Intelligent Auto-Treatment Recommendation Card */}
+                      {!isUser && msg.recommendedTreatment && (
+                        <div className="mt-2.5 pt-2 border-t border-[#BDDBD1]/60">
+                          <div className="bg-gradient-to-r from-[#EBF5F1] to-[#F2F8F6] rounded-lg p-2 border border-[#BDDBD1] flex flex-col gap-1.5 shadow-xs">
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#172523]">
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse shrink-0" />
+                              <span>Recommended Treatment:</span>
+                            </div>
+                            <div className="text-[11px] font-extrabold text-[#172523]">
+                              {msg.recommendedTreatment}
+                            </div>
+                            {(!activeBooking || activeBooking.step === 'confirmed') && (
+                              <button
+                                type="button"
+                                onClick={() => startInChatBooking(msg.recommendedTreatment)}
+                                className="mt-0.5 w-full py-1.5 px-2 bg-gradient-to-r from-[#172523] to-[#2B3E3B] hover:brightness-110 active:scale-98 text-white text-[11px] font-bold rounded-md shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer"
+                              >
+                                <Calendar className="w-3 h-3 text-[#BDDBD1]" />
+                                <span>Proceed with this Treatment →</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <span
                         className={`block text-[9px] mt-1 text-right font-normal ${
                           isUser ? 'text-[#BDDBD1]' : 'text-gray-400'
