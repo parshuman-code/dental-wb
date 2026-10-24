@@ -566,15 +566,15 @@ export default function AIChatbot() {
                 return (
                   <div
                     key={msg.id}
-                    className={`flex items-start gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+                    className={`flex items-start gap-2 chat-msg-smooth ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
                   >
                     {/* Mascot / User Avatar */}
                     {isUser ? (
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-[#172523] to-[#2D4541] text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-[#172523] to-[#2D4541] text-white flex items-center justify-center shrink-0 shadow-xs transition-transform hover:scale-105">
                         <User className="w-3.5 h-3.5" />
                       </div>
                     ) : (
-                      <div className="w-7 h-7 rounded-full bg-white p-0.5 border border-[#BDDBD1] shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
+                      <div className="w-7 h-7 rounded-full bg-white p-0.5 border border-[#BDDBD1] shadow-xs flex items-center justify-center shrink-0 overflow-hidden transition-transform hover:scale-105">
                         <Image
                           src="/dento.png"
                           alt="DenTo"
@@ -587,7 +587,7 @@ export default function AIChatbot() {
 
                     {/* Bubble */}
                     <div
-                      className={`max-w-[84%] rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xs ${
+                      className={`max-w-[84%] rounded-xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm transition-all duration-300 ${
                         isUser
                           ? 'bg-gradient-to-br from-[#1C2C29] via-[#243532] to-[#172523] text-white rounded-tr-none border border-[#2D4541]'
                           : 'bg-white text-[#152220] border border-[#BDDBD1]/70 rounded-tl-none font-medium'
@@ -937,27 +937,30 @@ export default function AIChatbot() {
                 </div>
               )}
 
-              {/* Lightweight Skeleton Loading UI */}
+              {/* Lightweight Animated Typing UI */}
               {isLoading && (
-                <div className="flex items-start gap-2 animate-in fade-in duration-200">
+                <div className="flex items-start gap-2 animate-in fade-in duration-300 chat-msg-smooth">
                   <div className="w-7 h-7 rounded-full bg-white p-0.5 border border-[#BDDBD1] shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
                     <Image
                       src="/dento.png"
                       alt="DenTo"
                       width={28}
                       height={28}
-                      className="w-full h-full object-contain animate-pulse"
+                      className="w-full h-full object-contain animate-bounce"
                     />
                   </div>
-                  <div className="bg-white border border-[#BDDBD1]/70 rounded-xl rounded-tl-none p-3 shadow-xs w-[75%] space-y-2">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                      <span className="text-[10px] font-bold text-[#172523] uppercase tracking-wider">DenTo is typing</span>
+                  <div className="bg-white border border-[#BDDBD1]/70 rounded-xl rounded-tl-none px-3.5 py-2.5 shadow-xs space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-[#172523] uppercase tracking-wider">DenTo is thinking</span>
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce [animation-delay:0ms]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce [animation-delay:180ms]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce [animation-delay:360ms]"></span>
+                      </div>
                     </div>
-                    {/* Shimmer skeleton bars */}
-                    <div className="h-2.5 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-full animate-pulse"></div>
-                    <div className="h-2.5 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-[85%] animate-pulse [animation-delay:150ms]"></div>
-                    <div className="h-2.5 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-[60%] animate-pulse [animation-delay:300ms]"></div>
+                    {/* Subtle shimmer skeleton bars */}
+                    <div className="h-2 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-44 animate-pulse"></div>
+                    <div className="h-2 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-full w-32 animate-pulse [animation-delay:150ms]"></div>
                   </div>
                 </div>
               )}
