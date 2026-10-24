@@ -218,46 +218,19 @@ export default function AIChatbot() {
     setActiveBooking(initialBooking);
   };
 
-  // Client-side intent detection for booking on behalf / save time / help booking or agreeing
+  // Client-side intent detection for explicit requests to book on behalf
   const checkIsBookingIntent = (text: string) => {
     const lower = text.toLowerCase().trim();
     const triggers = [
-      'book',
-      'appointment',
-      'schedule',
       'dont know how to book',
       "don't know how to book",
       'book for me',
       'book on my behalf',
-      'save my time',
-      'save time',
-      'reserve a slot',
-      'can you book',
-      'fix an appointment',
-      'slot',
-      'treatment booking',
-      'consultation',
-      // Multi-language affirmation triggers
-      'yes',
-      'yes please',
-      'yeah',
-      'yup',
-      'sure',
-      'haan',
-      'ha',
-      'haanji',
-      'kar do',
-      'book kar do',
-      'proceed',
-      'book it',
-      'ok book',
-      'schedule it',
-      'chale ga',
-      'chalega',
-      'ho',
-      'nakki'
+      'open booking form',
+      'show booking form',
+      'open booking widget'
     ];
-    return triggers.some(t => lower === t || lower.includes(t));
+    return triggers.some(t => lower.includes(t));
   };
 
   // Minimum time (ms) the typing indicator shows before the reply appears.
@@ -338,18 +311,17 @@ export default function AIChatbot() {
       const botMsg: ChatMessage = {
         id: `bot-${Date.now()}`,
         role: 'model',
-        content: cleanReply || "I would be delighted to help you schedule your appointment with Dr. Ananya Roy right now!",
+        content: cleanReply || "I am happy to help you with dental advice, clinic queries, and symptom guidance!",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         recommendedTreatment: recommendedTreatment ? matchTreatment(recommendedTreatment) : undefined,
       };
 
       setMessages((prev) => [...prev, botMsg]);
 
-      const treatmentToUse = bookingSignalTreatment || recommendedTreatment;
-
-      if (hasBookingSignal && (!activeBooking || activeBooking.step === 'confirmed')) {
-        // Small stagger so the booking widget appears after the bot reply renders
-        setTimeout(() => startInChatBooking(treatmentToUse), 250);
+      // Only open form if user explicitly asked locally to book on their behalf
+      // and NOT during routine symptom suggestions
+      if (isLocalBookingIntent && !recommendedTreatment && (!activeBooking || activeBooking.step === 'confirmed')) {
+        setTimeout(() => startInChatBooking(), 250);
       }
     } catch (err) {
       console.error('Chat error:', err);
@@ -596,27 +568,17 @@ export default function AIChatbot() {
                     >
                       <p className="whitespace-pre-wrap break-words">{msg.content}</p>
 
-                      {/* Intelligent Auto-Treatment Recommendation Card */}
+                      {/* Intelligent Auto-Treatment Recommendation Badge (Suggestions Only) */}
                       {!isUser && msg.recommendedTreatment && (
                         <div className="mt-2.5 pt-2 border-t border-[#BDDBD1]/60">
-                          <div className="bg-gradient-to-r from-[#EBF5F1] to-[#F2F8F6] rounded-lg p-2 border border-[#BDDBD1] flex flex-col gap-1.5 shadow-xs">
+                          <div className="bg-gradient-to-r from-[#EBF5F1] to-[#F2F8F6] rounded-lg p-2 border border-[#BDDBD1] flex items-center justify-between gap-2 shadow-xs">
                             <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#172523]">
-                              <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse shrink-0" />
-                              <span>Recommended Treatment:</span>
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Suggested Clinical Treatment:</span>
                             </div>
-                            <div className="text-[11px] font-extrabold text-[#172523]">
+                            <span className="text-[11px] font-extrabold text-[#172523] bg-white px-2 py-0.5 rounded-md border border-[#BDDBD1]/70">
                               {msg.recommendedTreatment}
-                            </div>
-                            {(!activeBooking || activeBooking.step === 'confirmed') && (
-                              <button
-                                type="button"
-                                onClick={() => startInChatBooking(msg.recommendedTreatment)}
-                                className="mt-0.5 w-full py-1.5 px-2 bg-gradient-to-r from-[#172523] to-[#2B3E3B] hover:brightness-110 active:scale-98 text-white text-[11px] font-bold rounded-md shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer"
-                              >
-                                <Calendar className="w-3 h-3 text-[#BDDBD1]" />
-                                <span>Proceed with this Treatment →</span>
-                              </button>
-                            )}
+                            </span>
                           </div>
                         </div>
                       )}
