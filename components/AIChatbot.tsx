@@ -21,7 +21,8 @@ import {
 import { useAuth } from '@/components/auth/AuthProvider';
 import AlarmTimePicker from '@/components/AlarmTimePicker';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { ClinicHoliday, checkIsDateHoliday, getNextAvailableWorkingDate, formatDisplayDate } from '@/lib/holidays';
 
 export interface TreatmentOption {
   id: string;
@@ -93,6 +94,34 @@ export default function AIChatbot() {
 
   // Check if user is authenticated (treat null user as logged out)
   const isAuthenticated = !!user;
+
+  const [holidays, setHolidays] = useState<ClinicHoliday[]>([]);
+
+  // Listen to clinic holidays in real-time
+  useEffect(() => {
+    try {
+      const q = query(collection(db, 'holidays'), orderBy('startDate', 'asc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const loaded: ClinicHoliday[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          loaded.push({
+            id: docSnap.id,
+            startDate: d.startDate,
+            endDate: d.endDate,
+            reason: d.reason,
+            createdAt: d.createdAt,
+          });
+        });
+        setHolidays(loaded);
+      }, (err) => {
+        console.warn('Holidays real-time sync notice:', err);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn('Failed to listen to holidays:', e);
+    }
+  }, []);
 
   useEffect(() => {
     // Safely compute on client mount to prevent SSR/prerender mismatch
@@ -391,6 +420,11 @@ export default function AIChatbot() {
     if (!activeBooking) return;
     if (!activeBooking.date) {
       alert('Please select an appointment date.');
+      return;
+    }
+    const holidayOnDate = checkIsDateHoliday(activeBooking.date, holidays);
+    if (holidayOnDate) {
+      alert(`The clinic is closed on this date due to holiday: ${holidayOnDate.reason}. Please select another date.`);
       return;
     }
     setActiveBooking({
@@ -704,65 +738,108 @@ export default function AIChatbot() {
                     )}
 
                     {/* Step B: Date & Compact Time Wheel Picker */}
-                    {activeBooking.step === 'datetime' && (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-[#2F3E3C]">
-                            Selected: <span className="text-emerald-800">{activeBooking.treatment}</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setActiveBooking({ ...activeBooking, step: 'treatment' })}
-                            className="text-[10px] text-[#2F3E3C]/70 underline hover:text-[#2F3E3C] flex items-center gap-0.5"
-                          >
-                            <RotateCcw className="w-2.5 h-2.5" /> Change
-                          </button>
-                        </div>
+                    {activeBooking.step === 'datetime' && (() => {
+                      const activeHoliday = checkIsDateHoliday(activeBooking.date, holidays);
+                      const isHoliday = !!activeHoliday;
+                      const nextDate = isHoliday ? getNextAvailableWorkingDate(activeBooking.date, holidays) : '';
 
-                        {/* Date Input */}
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#2F3E3C]/70 mb-1">
-                            Appointment Date
-                          </label>
-                          <input
-                            type="date"
-                            min={todayStr}
-                            value={activeBooking.date}
-                            onChange={(e) => setActiveBooking({ ...activeBooking, date: e.target.value })}
-                            className="w-full text-xs font-medium px-2.5 py-1.5 bg-white border border-[#BDDBD1] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2F3E3C] text-[#2F3E3C]"
-                          />
-                        </div>
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-[#2F3E3C]">
+                              Selected: <span className="text-emerald-800">{activeBooking.treatment}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setActiveBooking({ ...activeBooking, step: 'treatment' })}
+                              className="text-[10px] text-[#2F3E3C]/70 underline hover:text-[#2F3E3C] flex items-center gap-0.5"
+                            >
+                              <RotateCcw className="w-2.5 h-2.5" /> Change
+                            </button>
+                          </div>
 
-                        {/* Interactive Compact Alarm Wheel Picker */}
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#2F3E3C]/70 mb-1">
-                            Appointment Time
-                          </label>
-                          <AlarmTimePicker
-                            value={activeBooking.time}
-                            onChange={(t) => setActiveBooking({ ...activeBooking, time: t })}
-                          />
-                        </div>
+                          {/* Date Input */}
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#2F3E3C]/70 mb-1">
+                              Appointment Date
+                            </label>
+                            <input
+                              type="date"
+                              min={todayStr}
+                              value={activeBooking.date}
+                              onChange={(e) => setActiveBooking({ ...activeBooking, date: e.target.value })}
+                              className={`w-full text-xs font-medium px-2.5 py-1.5 bg-white border rounded-lg focus:outline-none focus:ring-1 text-[#2F3E3C] ${
+                                isHoliday ? 'border-rose-400 bg-rose-50/40 focus:ring-rose-400' : 'border-[#BDDBD1] focus:ring-[#2F3E3C]'
+                              }`}
+                            />
+                          </div>
 
-                        <div className="flex gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => setActiveBooking({ ...activeBooking, step: 'treatment' })}
-                            className="flex-1 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                          >
-                            Back
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleConfirmDateTime}
-                            className="flex-1 py-1.5 rounded-lg bg-[#2F3E3C] hover:bg-[#1f2a28] text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1"
-                          >
-                            <span>Next: Patient Info</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
+                          {/* Holiday / Clinic Closed Notice */}
+                          {isHoliday && activeHoliday && (
+                            <div className="p-2.5 rounded-xl bg-gradient-to-r from-rose-50 via-rose-100/60 to-amber-50 border border-rose-300 shadow-xs animate-in fade-in duration-200">
+                              <div className="flex items-start gap-2">
+                                <span className="text-sm">🏖️</span>
+                                <div className="space-y-1 text-[11px] leading-tight">
+                                  <p className="font-bold text-rose-800">
+                                    Clinic is closed on this date due to holiday:
+                                  </p>
+                                  <p className="text-rose-900 font-semibold italic">
+                                    &ldquo;{activeHoliday.reason}&rdquo;
+                                  </p>
+                                  {nextDate && (
+                                    <div className="pt-1 flex items-center justify-between gap-1">
+                                      <span className="text-[10px] text-slate-700 font-medium">Next open working day:</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setActiveBooking({ ...activeBooking, date: nextDate })}
+                                        className="text-[10px] font-bold text-emerald-800 bg-white hover:bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded shadow-2xs transition-colors"
+                                      >
+                                        Select {formatDisplayDate(nextDate)} →
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Interactive Compact Alarm Wheel Picker */}
+                          <div className={isHoliday ? 'opacity-40 pointer-events-none filter grayscale select-none' : ''}>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#2F3E3C]/70 mb-1">
+                              Appointment Time {isHoliday && <span className="text-rose-600 font-bold lowercase">(locked)</span>}
+                            </label>
+                            <AlarmTimePicker
+                              value={activeBooking.time}
+                              onChange={(t) => setActiveBooking({ ...activeBooking, time: t })}
+                            />
+                            {isHoliday && (
+                              <p className="text-[10px] font-semibold text-rose-600 mt-1">
+                                🔒 Time slots are disabled for this holiday date.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setActiveBooking({ ...activeBooking, step: 'treatment' })}
+                              className="flex-1 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                            >
+                              Back
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isHoliday || !activeBooking.date}
+                              onClick={handleConfirmDateTime}
+                              className="flex-1 py-1.5 rounded-lg bg-[#2F3E3C] hover:bg-[#1f2a28] disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <span>Next: Patient Info</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Step C: Patient Details (Pre-filled from logged in user) */}
                     {activeBooking.step === 'details' && (

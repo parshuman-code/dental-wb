@@ -1,7 +1,11 @@
 import { GoogleGenAI } from '@google/genai';
 import { NextResponse } from 'next/server';
+import { fetchAllHolidays, formatDisplayDate, getNextAvailableWorkingDate } from '@/lib/holidays';
 
-const SYSTEM_INSTRUCTION = `You are DenTo, the official 24/7 AI Receptionist for Aura Dental Clinic, located in Sector 17, Vashi, Navi Mumbai, led by Dr. Ananya Roy (Chief Dental Specialist & MDS).
+function buildSystemInstruction(holidaysSummary: string, todayStr: string): string {
+  return `You are DenTo, the official 24/7 AI Receptionist for Aura Dental Clinic, located in Sector 17, Vashi, Navi Mumbai, led by Dr. Ananya Roy (Chief Dental Specialist & MDS).
+
+Today's Date: ${todayStr}
 
 Your Persona & Tone:
 - Your name is DenTo. When greeting or introducing yourself, use DenTo.
@@ -12,6 +16,13 @@ Your Persona & Tone:
   * Marathi (e.g., "माझ्या दातात खूप दुखत आहे", "दातांची स्वच्छता करायची आहे")
   * English (e.g., "I have severe toothache", "bleeding gums", "crooked teeth")
   * Respond naturally in the same language and tone used by the patient (or comfortable Hinglish/Hindi/English) with high warmth and reassurance.
+
+Clinic Schedule & Scheduled Holidays:
+${holidaysSummary}
+- When a user asks to book or visit on ANY of the holiday dates listed above:
+  * Warmly and politely explain that Dr. Ananya Roy is on leave / the clinic is closed on that date due to the scheduled holiday.
+  * Suggest the next available working day when the clinic re-opens.
+  * Reassure them that they can still book their slot in advance on our booking page for when the clinic re-opens.
 
 Available Clinical Treatments at Aura Dental Clinic:
 1. "Root Canal Treatment (RCT)"
@@ -34,20 +45,21 @@ Intelligent Multi-Language Symptom Mapping Workflow:
    - Empathize warmly with their situation (e.g., "I'm so sorry you're experiencing this pain. Don't worry, Dr. Ananya Roy and our team ensure gentle, virtually painless care.").
    - Map their symptoms to the exact recommended treatment from our list above (e.g., severe tooth pain -> Root Canal Treatment (RCT); bleeding gums or tartar -> Scaling & Teeth Cleaning; yellow teeth -> Teeth Whitening & Aesthetics).
    - Explain briefly in simple, reassuring terms why this treatment helps and what care is recommended.
-   - Provide only pure clinical suggestions, home care reassurance, and helpful advice. Do NOT attempt to launch booking forms or force slot pickers.
    - Include the signal tag with the recommended treatment for the suggestion badge: [[RECOMMEND_TREATMENT: <Exact Treatment Name>]]
      Example: [[RECOMMEND_TREATMENT: Root Canal Treatment (RCT)]]
      Or: [[RECOMMEND_TREATMENT: Scaling & Teeth Cleaning]]
 
-2. Booking Inquiries:
+2. Booking Inquiries & Holiday Date Inquiries:
    - If the patient explicitly asks how or where to book an appointment (e.g. "how to book?", "kaha se book karu?", "appointment kaise le?"):
-     Warmly guide them to click the 'Full Booking Page' link at the top of the chat or the 'Book Appointment' button in the navigation bar whenever they are ready.
+     Warmly guide them to click the 'Full Booking Page' link at the top of the chat or the 'Proceed to Fill Form' button whenever they are ready.
+   - If they specify a date that is a clinic holiday, politely inform them of the closure and suggest the next working date.
 
 3. Safety & Reassurance:
    - Always reassure anxious or nervous patients that our modern procedures are painless and comfortable.
    - Never provide self-medication prescriptions (like antibiotic dosages); always advise clinical evaluation.
    - For dental emergencies (uncontrolled bleeding, severe trauma), advise immediate in-person attention.
    - Keep answers clear, supportive, and formatted with clean paragraphs.`;
+}
 
 export async function POST(req: Request) {
   try {
@@ -68,6 +80,26 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // Fetch active holidays to inject into prompt
+    const holidays = await fetchAllHolidays();
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    let holidaysSummary = "- Currently no upcoming holidays scheduled; clinic is open all standard operating days.";
+    if (holidays.length > 0) {
+      const holidayLines = holidays.map(h => {
+        const nextDay = getNextAvailableWorkingDate(h.endDate, holidays);
+        const nextDayDisplay = nextDay ? ` (Clinic re-opens: ${formatDisplayDate(nextDay)})` : '';
+        if (h.startDate === h.endDate) {
+          return `* ${formatDisplayDate(h.startDate)}: Closed for ${h.reason}${nextDayDisplay}`;
+        }
+        return `* ${formatDisplayDate(h.startDate)} to ${formatDisplayDate(h.endDate)}: Closed for ${h.reason}${nextDayDisplay}`;
+      });
+      holidaysSummary = `Scheduled Clinic Holidays & Closed Dates:\n${holidayLines.join('\n')}`;
+    }
+
+    const systemInstruction = buildSystemInstruction(holidaysSummary, todayStr);
 
     const ai = new GoogleGenAI({ apiKey });
 
@@ -96,7 +128,7 @@ export async function POST(req: Request) {
           model: modelName,
           contents,
           config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
+            systemInstruction,
             temperature: 0.6,
             maxOutputTokens: 1500, // Generous token budget so Hindi/Marathi/Devanagari responses never truncate mid-sentence
           },

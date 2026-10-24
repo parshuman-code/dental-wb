@@ -22,7 +22,10 @@ import {
   Trash2,
   AlertTriangle,
   FileText,
-  MessageSquareQuote
+  MessageSquareQuote,
+  Palmtree,
+  CalendarOff,
+  PlusCircle
 } from 'lucide-react';
 import ScrollReveal from '@/components/ScrollReveal';
 import { db } from '@/lib/firebase';
@@ -30,6 +33,7 @@ import { collection, onSnapshot, orderBy, query, doc, updateDoc, limit, deleteDo
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import AlarmTimePicker from '@/components/AlarmTimePicker';
+import { ClinicHoliday, addClinicHoliday, deleteClinicHoliday, formatDisplayDate } from '@/lib/holidays';
 
 const OWNER_EMAIL = 'prashantgadwe142006@gmail.com';
 
@@ -49,6 +53,7 @@ interface Appointment {
 export default function AdminDashboard() {
   const { user, loading: authLoading, signInWithGoogle } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [activeTab, setActiveTab] = useState<'appointments' | 'holidays'>('appointments');
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -59,7 +64,94 @@ export default function AdminDashboard() {
   const [pendingTimeChange, setPendingTimeChange] = useState<{ appt: Appointment; oldTime: string; newTime: string } | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
 
+  // Clinic Holiday Management States
+  const [holidays, setHolidays] = useState<ClinicHoliday[]>([]);
+  const [newHolidayStart, setNewHolidayStart] = useState('');
+  const [newHolidayEnd, setNewHolidayEnd] = useState('');
+  const [newHolidayReason, setNewHolidayReason] = useState('');
+  const [isAddingHoliday, setIsAddingHoliday] = useState(false);
+  const [deletingHolidayId, setDeletingHolidayId] = useState<string | null>(null);
+  const [holidayError, setHolidayError] = useState('');
+  const [holidaySuccess, setHolidaySuccess] = useState('');
+
   const isOwner = user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+
+  // Real-time Firestore listener for clinic holidays
+  useEffect(() => {
+    if (authLoading || !isOwner) return;
+
+    try {
+      const q = query(collection(db, 'holidays'), orderBy('startDate', 'asc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const loaded: ClinicHoliday[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          loaded.push({
+            id: docSnap.id,
+            startDate: d.startDate,
+            endDate: d.endDate,
+            reason: d.reason,
+            createdAt: d.createdAt,
+          });
+        });
+        setHolidays(loaded);
+      }, (err) => {
+        console.warn('Holidays sync listener error:', err);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn('Failed to listen to holidays:', e);
+    }
+  }, [authLoading, isOwner]);
+
+  const handleAddHoliday = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHolidayError('');
+    setHolidaySuccess('');
+
+    if (!newHolidayStart) {
+      setHolidayError('Please select a start date.');
+      return;
+    }
+
+    const end = newHolidayEnd || newHolidayStart;
+    if (end < newHolidayStart) {
+      setHolidayError('End date cannot be earlier than start date.');
+      return;
+    }
+
+    const reason = newHolidayReason.trim() || 'Clinic Holiday / Closed';
+
+    try {
+      setIsAddingHoliday(true);
+      await addClinicHoliday(newHolidayStart, end, reason);
+      setHolidaySuccess(`Holiday "${reason}" marked successfully! Slots are now blocked.`);
+      setNewHolidayStart('');
+      setNewHolidayEnd('');
+      setNewHolidayReason('');
+      setTimeout(() => setHolidaySuccess(''), 4000);
+    } catch (err: any) {
+      console.error('Failed to add holiday:', err);
+      setHolidayError(err?.message || 'Failed to save holiday. Please try again.');
+    } finally {
+      setIsAddingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (id?: string) => {
+    if (!id) return;
+    if (!confirm('Are you sure you want to remove this holiday and unblock these dates?')) return;
+
+    try {
+      setDeletingHolidayId(id);
+      await deleteClinicHoliday(id);
+    } catch (err) {
+      console.error('Failed to delete holiday:', err);
+      alert('Failed to remove holiday.');
+    } finally {
+      setDeletingHolidayId(null);
+    }
+  };
 
   // Real-time Firestore listener for appointments with pagination/limit optimization
   useEffect(() => {
@@ -548,8 +640,49 @@ export default function AdminDashboard() {
           </header>
         </ScrollReveal>
 
-        {/* Live Executive KPI Cards */}
-        <ScrollReveal direction="up" delay={100}>
+        {/* Section Navigation: Appointments vs Holidays / Slot Blocking */}
+        <ScrollReveal direction="up" delay={50}>
+          <div className="flex items-center gap-3 mb-6 bg-white/60 p-1.5 rounded-2xl border border-[#BDDBD1]/40 shadow-xs max-w-fit">
+            <button
+              type="button"
+              onClick={() => setActiveTab('appointments')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'appointments'
+                  ? 'bg-[#2F3E3C] text-white shadow-md shadow-[#2F3E3C]/20'
+                  : 'text-[#2F3E3C]/70 hover:text-[#2F3E3C] hover:bg-white/80'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4 text-[#BDDBD1]" />
+              <span>Patient Appointments ({appointments.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('holidays')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'holidays'
+                  ? 'bg-gradient-to-r from-rose-700 to-rose-900 text-white shadow-md shadow-rose-900/20'
+                  : 'text-[#2F3E3C]/70 hover:text-[#2F3E3C] hover:bg-white/80'
+              }`}
+            >
+              <CalendarOff className="w-4 h-4 text-rose-300" />
+              <span>Holidays & Slot Blocking</span>
+              {holidays.length > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  activeTab === 'holidays' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-700'
+                }`}>
+                  {holidays.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </ScrollReveal>
+
+        {/* TAB 1: APPOINTMENTS & STATS */}
+        {activeTab === 'appointments' && (
+          <>
+            {/* Live Executive KPI Cards */}
+            <ScrollReveal direction="up" delay={100}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div 
               onClick={() => setFilter('All')}
@@ -824,6 +957,236 @@ export default function AdminDashboard() {
           </div>
         </div>
       </ScrollReveal>
+      </>
+    )}
+
+      {/* TAB 2: CLINIC HOLIDAYS & SLOT BLOCKING MANAGEMENT */}
+      {activeTab === 'holidays' && (
+        <div className="space-y-6">
+          {/* Header Info Banner */}
+          <ScrollReveal direction="up" delay={100}>
+            <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-[#2F3E3C] text-white p-6 sm:p-8 rounded-3xl shadow-lg border border-rose-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-rose-200 text-xs font-bold mb-3 border border-white/10">
+                  <Palmtree className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Automatic Slot Disabler & AI Receptionist Sync</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  Clinic Holidays & Slot Blocking
+                </h2>
+                <p className="text-rose-100/80 text-xs sm:text-sm max-w-2xl mt-1.5 leading-relaxed">
+                  Mark single dates or date ranges (e.g. festivals, personal vacation, or clinic renovation). When marked closed, the booking form automatically disables time slots with a clear holiday warning, and the DenTo AI receptionist guides patients to the next open working day.
+                </p>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-md px-5 py-4 rounded-2xl border border-white/20 text-center shrink-0 w-full sm:w-auto">
+                <div className="text-3xl font-black text-amber-300">{holidays.length}</div>
+                <div className="text-[11px] font-bold text-rose-100 tracking-wide uppercase mt-0.5">
+                  Scheduled Holidays
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
+
+          {/* Add Holiday Form Card */}
+          <ScrollReveal direction="up" delay={150}>
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-[#BDDBD1]/50">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200 shadow-xs">
+                  <CalendarOff className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[#2F3E3C]">Mark Clinic Closed / Add Holiday</h3>
+                  <p className="text-xs text-[#2F3E3C]/60">Select dates and reason in 2 simple clicks</p>
+                </div>
+              </div>
+
+              {holidayError && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{holidayError}</span>
+                </div>
+              )}
+
+              {holidaySuccess && (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-700 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>{holidaySuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleAddHoliday} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Start Date <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newHolidayStart}
+                    onChange={(e) => {
+                      setNewHolidayStart(e.target.value);
+                      if (!newHolidayEnd || newHolidayEnd < e.target.value) {
+                        setNewHolidayEnd(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#2F3E3C] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    End Date <span className="text-slate-400 font-normal">(Same if 1 day)</span>
+                  </label>
+                  <input
+                    type="date"
+                    min={newHolidayStart}
+                    value={newHolidayEnd}
+                    onChange={(e) => setNewHolidayEnd(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#2F3E3C] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Reason / Occasion
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Diwali Vacation, Doctor on Leave, Renovation"
+                    value={newHolidayReason}
+                    onChange={(e) => setNewHolidayReason(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#2F3E3C] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    disabled={isAddingHoliday || !newHolidayStart}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-rose-700 via-rose-800 to-rose-900 hover:brightness-110 active:scale-98 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md shadow-rose-900/20 flex items-center justify-center gap-2 cursor-pointer h-[42px]"
+                  >
+                    {isAddingHoliday ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <PlusCircle className="w-4 h-4" />
+                        <span>Add Holiday 🏖️</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </ScrollReveal>
+
+          {/* Scheduled Holidays List Table */}
+          <ScrollReveal direction="up" delay={200}>
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-[#BDDBD1]/50">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-[#2F3E3C] flex items-center gap-2">
+                  <span>Active & Upcoming Holidays</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    {holidays.length}
+                  </span>
+                </h3>
+              </div>
+
+              {holidays.length === 0 ? (
+                <div className="text-center py-12 px-4 rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+                  <Palmtree className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700">No Clinic Holidays Scheduled</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                    The clinic is open on all standard working days. Add a holiday date above whenever Dr. Ananya Roy is away or the clinic is closed.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="p-3.5">Dates Closed</th>
+                        <th className="p-3.5">Duration</th>
+                        <th className="p-3.5">Holiday Reason / Note</th>
+                        <th className="p-3.5">Status</th>
+                        <th className="p-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
+                      {holidays.map((h) => {
+                        const isSingleDay = h.startDate === h.endDate;
+                        const todayIso = new Date().toISOString().split('T')[0];
+                        const isPast = h.endDate < todayIso;
+                        const isToday = todayIso >= h.startDate && todayIso <= h.endDate;
+
+                        return (
+                          <tr key={h.id} className="hover:bg-rose-50/20 transition-colors">
+                            <td className="p-3.5 font-bold text-slate-900">
+                              <div className="flex items-center gap-2">
+                                <CalendarOff className="w-4 h-4 text-rose-600 shrink-0" />
+                                <div>
+                                  {isSingleDay ? (
+                                    <span>{formatDisplayDate(h.startDate)}</span>
+                                  ) : (
+                                    <span>
+                                      {formatDisplayDate(h.startDate)} — {formatDisplayDate(h.endDate)}
+                                    </span>
+                                  )}
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {h.startDate} {h.startDate !== h.endDate ? `to ${h.endDate}` : ''}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3.5 text-slate-600 font-medium">
+                              {isSingleDay ? '1 Day' : 'Multi-day Vacation'}
+                            </td>
+                            <td className="p-3.5">
+                              <span className="inline-block px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 font-semibold border border-amber-200">
+                                {h.reason}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              {isToday ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-xs font-bold animate-pulse">
+                                  ● Closed Today
+                                </span>
+                              ) : isPast ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
+                                  Past
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                                  Upcoming (Locked)
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <button
+                                type="button"
+                                disabled={deletingHolidayId === h.id}
+                                onClick={() => handleDeleteHoliday(h.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                                title="Remove holiday and reopen slots"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                <span>{deletingHolidayId === h.id ? 'Removing...' : 'Delete'}</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </ScrollReveal>
+        </div>
+      )}
 
       {/* Patient Notes Quick View Modal */}
       {viewingNotesAppt && (
