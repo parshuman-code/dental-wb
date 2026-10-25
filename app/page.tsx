@@ -19,7 +19,7 @@ const featuredServices = [
   {
     title: 'Braces & Clear Aligners',
     desc: 'Straighten crooked teeth with metal braces or virtually invisible clear aligners — no wires hassle.',
-    img: 'https://images.unsplash.com/photo-1592652417729-1a73b222956f?auto=format&fit=crop&w=500&q=80'
+    img: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=500&q=80'
   },
   {
     title: 'Dental Implants',

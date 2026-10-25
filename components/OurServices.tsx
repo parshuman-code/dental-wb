@@ -76,7 +76,7 @@ export const DENTAL_SERVICES: DentalService[] = [
     keyPerks: ['Prevents tooth wear from night grinding', 'Relieves morning jaw & temple stiffness', 'Protects lips and teeth during contact sports'],
     duration: '15 mins scan & fitting',
     comfortLevel: 'Customized Snug Fit',
-    image: 'https://images.unsplash.com/photo-1598256989800-fea5ce5146f2?auto=format&fit=crop&w=800&q=80'
+    image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
   },
 
   // 2. Restorative Care
@@ -142,7 +142,7 @@ export const DENTAL_SERVICES: DentalService[] = [
     keyPerks: ['Fixes complex bite and crooked teeth', 'Discreet ceramic tooth-colored option', 'Long-lasting structural smile stability'],
     duration: 'Monthly adjustments',
     comfortLevel: 'Mild Pressure During Alignment',
-    image: 'https://images.unsplash.com/photo-1592652417729-1a73b222956f?auto=format&fit=crop&w=800&q=80'
+    image: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=800&q=80'
   },
   {
     id: 'clear-aligners-invisible-braces',
