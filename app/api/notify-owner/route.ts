@@ -3,6 +3,23 @@ import { Resend } from 'resend';
 
 const OWNER_EMAIL = 'prashantgadwe142006@gmail.com';
 
+// GET diagnostic endpoint for checking Resend configuration status
+export async function GET() {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Luminous Dental <onboarding@resend.dev>';
+  
+  return NextResponse.json({
+    status: 'ok',
+    hasResendApiKey: Boolean(apiKey && apiKey.trim().length > 0),
+    resendApiKeyPrefix: apiKey ? `${apiKey.substring(0, 6)}...` : 'not_set',
+    ownerEmail: OWNER_EMAIL,
+    fromEmail: fromEmail,
+    hint: !apiKey
+      ? 'RESEND_API_KEY is not configured in environment variables. Please add RESEND_API_KEY to Vercel Project Settings -> Environment Variables or .env.local.'
+      : 'API key is configured. If using free Resend tier (onboarding@resend.dev), emails can only be delivered to your registered Resend email address unless domain is verified.'
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
