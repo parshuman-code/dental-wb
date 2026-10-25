@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, 
   MessageCircle, 
@@ -25,7 +25,9 @@ import {
   MessageSquareQuote,
   Palmtree,
   CalendarOff,
-  PlusCircle
+  PlusCircle,
+  Table,
+  ChevronDown
 } from 'lucide-react';
 import ScrollReveal from '@/components/ScrollReveal';
 import { db } from '@/lib/firebase';
@@ -58,6 +60,8 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
   const [adjustingAppt, setAdjustingAppt] = useState<Appointment | null>(null);
   const [viewingNotesAppt, setViewingNotesAppt] = useState<Appointment | null>(null);
   const [selectedAdjustTime, setSelectedAdjustTime] = useState<string>('');
@@ -103,6 +107,17 @@ export default function AdminDashboard() {
       console.warn('Failed to listen to holidays:', e);
     }
   }, [authLoading, isOwner]);
+
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setIsExportDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleAddHoliday = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -305,6 +320,7 @@ export default function AdminDashboard() {
   const generatePDFReport = async () => {
     try {
       setIsExporting(true);
+      setIsExportDropdownOpen(false);
       const { jsPDF } = await import('jspdf');
       const autoTableModule = await import('jspdf-autotable');
       const autoTable = autoTableModule.default || autoTableModule;
@@ -458,6 +474,76 @@ export default function AdminDashboard() {
     }
   };
 
+  // Professional Business Excel/CSV Report Generation and Download
+  const generateExcelReport = () => {
+    try {
+      setIsExporting(true);
+      setIsExportDropdownOpen(false);
+
+      const headers = [
+        'ID',
+        'Patient Name',
+        'Phone Number',
+        'Email Address',
+        'Treatment',
+        'Appointment Date',
+        'Appointment Time',
+        'Status',
+        'Patient Notes'
+      ];
+
+      const escapeCSV = (value: string | undefined | null) => {
+        if (!value) return '""';
+        const str = String(value).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const rows = appointments.map((appt, idx) => [
+        escapeCSV((idx + 1).toString()),
+        escapeCSV(appt.name || 'Anonymous'),
+        escapeCSV(appt.phone ? `+${appt.phone}` : ''),
+        escapeCSV(appt.patientEmail || ''),
+        escapeCSV(appt.treatment || 'Consultation'),
+        escapeCSV(appt.date || 'TBD'),
+        escapeCSV(appt.time || ''),
+        escapeCSV(appt.status || 'Pending'),
+        escapeCSV(appt.notes ? appt.notes.replace(/(\r\n|\n|\r)/gm, ' ') : '')
+      ]);
+
+      // Add summary overview header rows to Excel
+      const todayStr = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const csvContent = [
+        ['"Aura Dental Clinic & Specialist Care - Appointments Report"'].join(','),
+        [`"Report Date: ${todayStr}"`].join(','),
+        [`"Total Bookings: ${stats.total}"`, `"Pending: ${stats.pending}"`, `"Confirmed: ${stats.confirmed + stats.completed}"`, `"Cancelled: ${stats.cancelled}"`].join(','),
+        [], // empty separator line
+        headers.map(h => `"${h}"`).join(','),
+        ...rows.map(r => r.join(','))
+      ].join('\r\n');
+
+      // Use BOM for flawless Microsoft Excel UTF-8 character encoding detection
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Dental_Clinic_Bookings_Report_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error generating Excel report:', error);
+      alert('Failed to generate Excel report. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     if (status === 'Confirmed') return <CheckCircle className="w-5 h-5 text-[#BDDBD1]" />;
     if (status === 'Pending') return <Clock className="w-5 h-5 text-amber-500" />;
@@ -547,12 +633,12 @@ export default function AdminDashboard() {
     });
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#FBF9F1] via-white to-[#E8F0F1]/40 p-4 sm:p-8 font-sans overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-b from-[#FBF9F1] via-white to-[#E8F0F1]/40 p-4 sm:p-8 font-sans overflow-x-clip">
       <div className="max-w-7xl mx-auto">
         
         {/* Header with Real-Time Pending Notification Badge & Action Controls */}
-        <ScrollReveal direction="up">
-          <header className="bg-gradient-to-r from-[#FBF9F1] via-white to-[#E8F0F1] border border-[#BDDBD1]/30 rounded-2xl p-6 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <ScrollReveal direction="up" className="relative z-50">
+          <header className="relative z-50 bg-gradient-to-r from-[#FBF9F1] via-white to-[#E8F0F1] border border-[#BDDBD1]/30 rounded-2xl p-6 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-3.5">
               <div className="relative">
                 <div className="p-3 bg-gradient-to-br from-[#2F3E3C] to-[#3d524f] rounded-2xl shadow-md text-white flex items-center justify-center">
@@ -596,7 +682,7 @@ export default function AdminDashboard() {
             </div>
             
             {/* Search Input & Download PDF Button */}
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto relative z-50">
               <div className="relative flex-1 md:w-72">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#2F3E3C]/60" />
                 <input
@@ -617,31 +703,69 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              {/* Download Report as PDF Button */}
-              <button
-                onClick={generatePDFReport}
-                disabled={isExporting || appointments.length === 0}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#2F3E3C] via-[#3d524f] to-[#2F3E3C] hover:brightness-110 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md shadow-[#2F3E3C]/20 cursor-pointer"
-                title="Download comprehensive historical booking report as PDF"
-              >
-                {isExporting ? (
-                  <>
+              {/* Download Report Dropdown (Icon-Only Button expanding to PDF and Excel) */}
+              <div className="relative z-50" ref={exportDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                  disabled={isExporting || appointments.length === 0}
+                  className="w-10 h-10 flex items-center justify-center bg-gradient-to-r from-[#2F3E3C] via-[#3d524f] to-[#2F3E3C] hover:brightness-110 active:scale-95 disabled:opacity-50 text-white rounded-xl transition-all shadow-md shadow-[#2F3E3C]/20 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2F3E3C]/30"
+                  title="Download Bookings Report (PDF or Excel)"
+                  aria-label="Download Report"
+                  aria-expanded={isExportDropdownOpen}
+                >
+                  {isExporting ? (
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Generating PDF...</span>
-                  </>
-                ) : (
-                  <>
-                    <FileDown className="w-4 h-4 text-[#BDDBD1]" />
-                    <span>Download Report as PDF</span>
-                  </>
+                  ) : (
+                    <Download className="w-5 h-5 text-[#BDDBD1]" />
+                  )}
+                </button>
+
+                {/* Dropdown Menu Options */}
+                {isExportDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-[#BDDBD1]/60 py-1.5 z-[100] animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md ring-1 ring-black/10">
+                    <div className="px-3 py-1.5 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-[#2F3E3C]/50">
+                      Export Report
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={generatePDFReport}
+                      disabled={isExporting}
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 text-xs sm:text-sm text-[#2F3E3C] hover:bg-[#FBF9F1] hover:text-[#2F3E3C] transition-colors cursor-pointer text-left font-medium group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <FileDown className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800">Download in PDF</span>
+                        <span className="text-[10px] text-slate-400">Formatted printable report</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={generateExcelReport}
+                      disabled={isExporting}
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 text-xs sm:text-sm text-[#2F3E3C] hover:bg-[#FBF9F1] hover:text-[#2F3E3C] transition-colors cursor-pointer text-left font-medium group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <Table className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800">Download in Excel</span>
+                        <span className="text-[10px] text-slate-400">Spreadsheet table (.csv)</span>
+                      </div>
+                    </button>
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
           </header>
         </ScrollReveal>
 
         {/* Section Navigation: Appointments vs Holidays / Slot Blocking */}
-        <ScrollReveal direction="up" delay={50}>
+        <ScrollReveal direction="up" delay={50} className="relative z-10">
           <div className="flex items-center gap-3 mb-6 bg-white/60 p-1.5 rounded-2xl border border-[#BDDBD1]/40 shadow-xs max-w-fit">
             <button
               type="button"
