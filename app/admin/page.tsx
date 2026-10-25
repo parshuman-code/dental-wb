@@ -20,7 +20,12 @@ import {
   Check,
   X,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  FileText,
+  MessageSquareQuote,
+  Palmtree,
+  CalendarOff,
+  PlusCircle
 } from 'lucide-react';
 import ScrollReveal from '@/components/ScrollReveal';
 import { db } from '@/lib/firebase';
@@ -28,6 +33,7 @@ import { collection, onSnapshot, orderBy, query, doc, updateDoc, limit, deleteDo
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import AlarmTimePicker from '@/components/AlarmTimePicker';
+import { ClinicHoliday, addClinicHoliday, deleteClinicHoliday, formatDisplayDate } from '@/lib/holidays';
 
 const OWNER_EMAIL = 'prashantgadwe142006@gmail.com';
 
@@ -47,16 +53,105 @@ interface Appointment {
 export default function AdminDashboard() {
   const { user, loading: authLoading, signInWithGoogle } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [activeTab, setActiveTab] = useState<'appointments' | 'holidays'>('appointments');
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [adjustingAppt, setAdjustingAppt] = useState<Appointment | null>(null);
+  const [viewingNotesAppt, setViewingNotesAppt] = useState<Appointment | null>(null);
   const [selectedAdjustTime, setSelectedAdjustTime] = useState<string>('');
   const [pendingTimeChange, setPendingTimeChange] = useState<{ appt: Appointment; oldTime: string; newTime: string } | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
 
+  // Clinic Holiday Management States
+  const [holidays, setHolidays] = useState<ClinicHoliday[]>([]);
+  const [newHolidayStart, setNewHolidayStart] = useState('');
+  const [newHolidayEnd, setNewHolidayEnd] = useState('');
+  const [newHolidayReason, setNewHolidayReason] = useState('');
+  const [isAddingHoliday, setIsAddingHoliday] = useState(false);
+  const [deletingHolidayId, setDeletingHolidayId] = useState<string | null>(null);
+  const [holidayError, setHolidayError] = useState('');
+  const [holidaySuccess, setHolidaySuccess] = useState('');
+
   const isOwner = user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+
+  // Real-time Firestore listener for clinic holidays
+  useEffect(() => {
+    if (authLoading || !isOwner) return;
+
+    try {
+      const q = query(collection(db, 'holidays'), orderBy('startDate', 'asc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const loaded: ClinicHoliday[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          loaded.push({
+            id: docSnap.id,
+            startDate: d.startDate,
+            endDate: d.endDate,
+            reason: d.reason,
+            createdAt: d.createdAt,
+          });
+        });
+        setHolidays(loaded);
+      }, (err) => {
+        console.warn('Holidays sync listener error:', err);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn('Failed to listen to holidays:', e);
+    }
+  }, [authLoading, isOwner]);
+
+  const handleAddHoliday = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHolidayError('');
+    setHolidaySuccess('');
+
+    if (!newHolidayStart) {
+      setHolidayError('Please select a start date.');
+      return;
+    }
+
+    const end = newHolidayEnd || newHolidayStart;
+    if (end < newHolidayStart) {
+      setHolidayError('End date cannot be earlier than start date.');
+      return;
+    }
+
+    const reason = newHolidayReason.trim() || 'Clinic Holiday / Closed';
+
+    try {
+      setIsAddingHoliday(true);
+      await addClinicHoliday(newHolidayStart, end, reason);
+      setHolidaySuccess(`Holiday "${reason}" marked successfully! Slots are now blocked.`);
+      setNewHolidayStart('');
+      setNewHolidayEnd('');
+      setNewHolidayReason('');
+      setTimeout(() => setHolidaySuccess(''), 4000);
+    } catch (err: any) {
+      console.error('Failed to add holiday:', err);
+      setHolidayError(err?.message || 'Failed to save holiday. Please try again.');
+    } finally {
+      setIsAddingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (id?: string) => {
+    if (!id) return;
+    if (!confirm('Are you sure you want to remove this holiday and unblock these dates?')) return;
+
+    try {
+      setDeletingHolidayId(id);
+      await deleteClinicHoliday(id);
+    } catch (err) {
+      console.error('Failed to delete holiday:', err);
+      alert('Failed to remove holiday.');
+    } finally {
+      setDeletingHolidayId(null);
+    }
+  };
 
   // Real-time Firestore listener for appointments with pagination/limit optimization
   useEffect(() => {
@@ -294,13 +389,14 @@ export default function AdminDashboard() {
         appt.name || 'Anonymous',
         appt.phone ? `+${appt.phone}` : (appt.patientEmail || '-'),
         appt.treatment || 'Consultation',
+        appt.notes ? appt.notes.trim() : '-',
         `${appt.date || 'TBD'} ${appt.time ? `@ ${appt.time}` : ''}`,
         appt.status || 'Pending',
       ]);
 
       (autoTable as any)(doc, {
         startY: yPos + 10,
-        head: [['#', 'Patient Name', 'Contact', 'Treatment', 'Scheduled Date', 'Status']],
+        head: [['#', 'Patient Name', 'Contact', 'Treatment', 'Patient Notes', 'Scheduled Date', 'Status']],
         body: tableData,
         theme: 'striped',
         headStyles: {
@@ -311,26 +407,27 @@ export default function AdminDashboard() {
           halign: 'left',
         },
         styles: {
-          fontSize: 8.5,
-          cellPadding: 6,
+          fontSize: 8,
+          cellPadding: 5,
           textColor: [30, 41, 59],
         },
         columnStyles: {
-          0: { cellWidth: 25, halign: 'center' },
-          1: { cellWidth: 110, fontStyle: 'bold' },
-          2: { cellWidth: 100 },
-          3: { cellWidth: 120 },
-          4: { cellWidth: 90 },
-          5: { cellWidth: 70, fontStyle: 'bold', halign: 'center' },
+          0: { cellWidth: 20, halign: 'center' },
+          1: { cellWidth: 95, fontStyle: 'bold' },
+          2: { cellWidth: 80 },
+          3: { cellWidth: 95 },
+          4: { cellWidth: 105, fontStyle: 'italic' },
+          5: { cellWidth: 70 },
+          6: { cellWidth: 50, fontStyle: 'bold', halign: 'center' },
         },
         didParseCell: (data: any) => {
-          if (data.section === 'body' && data.column.index === 5) {
+          if (data.section === 'body' && data.column.index === 6) {
             const status = data.cell.raw;
             if (status === 'Confirmed' || status === 'Completed') {
               data.cell.styles.textColor = [16, 185, 129]; // Emerald
             } else if (status === 'Pending') {
               data.cell.styles.textColor = [217, 119, 6]; // Amber
-            } else if (status === 'Cancelled') {
+            } else if (status === 'Cancelled' || status === 'Cancelled by Patient') {
               data.cell.styles.textColor = [239, 68, 68]; // Red
             }
           }
@@ -438,7 +535,16 @@ export default function AdminDashboard() {
       if (filter === 'Cancelled') return a.status === 'Cancelled' || a.status === 'Cancelled by Patient';
       return a.status === filter;
     })
-    .filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.treatment.toLowerCase().includes(search.toLowerCase()));
+    .filter(a => {
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return (
+        a.name.toLowerCase().includes(s) || 
+        a.treatment.toLowerCase().includes(s) ||
+        (a.notes && a.notes.toLowerCase().includes(s)) ||
+        (a.phone && a.phone.includes(s))
+      );
+    });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FBF9F1] via-white to-[#E8F0F1]/40 p-4 sm:p-8 font-sans overflow-hidden">
@@ -491,15 +597,24 @@ export default function AdminDashboard() {
             
             {/* Search Input & Download PDF Button */}
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#2F3E3C]/40" />
+              <div className="relative flex-1 md:w-72">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#2F3E3C]/60" />
                 <input
                   type="text"
                   placeholder="Search patient, phone, treatment..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-white/90 border border-[#BDDBD1]/40 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#BDDBD1] shadow-xs"
+                  className="w-full pl-10 pr-8 py-2.5 bg-white border-2 border-[#2F3E3C]/20 focus:border-[#2F3E3C] rounded-xl text-sm font-medium text-[#2F3E3C] placeholder-[#2F3E3C]/50 focus:outline-none focus:ring-2 focus:ring-[#2F3E3C]/10 shadow-sm transition-all"
                 />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 bg-slate-100 rounded-full w-4 h-4 flex items-center justify-center font-bold"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
 
               {/* Download Report as PDF Button */}
@@ -525,8 +640,49 @@ export default function AdminDashboard() {
           </header>
         </ScrollReveal>
 
-        {/* Live Executive KPI Cards */}
-        <ScrollReveal direction="up" delay={100}>
+        {/* Section Navigation: Appointments vs Holidays / Slot Blocking */}
+        <ScrollReveal direction="up" delay={50}>
+          <div className="flex items-center gap-3 mb-6 bg-white/60 p-1.5 rounded-2xl border border-[#BDDBD1]/40 shadow-xs max-w-fit">
+            <button
+              type="button"
+              onClick={() => setActiveTab('appointments')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'appointments'
+                  ? 'bg-[#2F3E3C] text-white shadow-md shadow-[#2F3E3C]/20'
+                  : 'text-[#2F3E3C]/70 hover:text-[#2F3E3C] hover:bg-white/80'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4 text-[#BDDBD1]" />
+              <span>Patient Appointments ({appointments.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('holidays')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'holidays'
+                  ? 'bg-gradient-to-r from-rose-700 to-rose-900 text-white shadow-md shadow-rose-900/20'
+                  : 'text-[#2F3E3C]/70 hover:text-[#2F3E3C] hover:bg-white/80'
+              }`}
+            >
+              <CalendarOff className="w-4 h-4 text-rose-300" />
+              <span>Holidays & Slot Blocking</span>
+              {holidays.length > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  activeTab === 'holidays' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-700'
+                }`}>
+                  {holidays.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </ScrollReveal>
+
+        {/* TAB 1: APPOINTMENTS & STATS */}
+        {activeTab === 'appointments' && (
+          <>
+            {/* Live Executive KPI Cards */}
+            <ScrollReveal direction="up" delay={100}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div 
               onClick={() => setFilter('All')}
@@ -654,6 +810,7 @@ export default function AdminDashboard() {
                 <tr className="bg-gradient-to-r from-[#E8F0F1] to-[#FBF9F1] border-b border-[#BDDBD1]/30 text-[#2F3E3C]/70 text-sm">
                   <th className="p-4 font-semibold">Patient</th>
                   <th className="p-4 font-semibold">Treatment</th>
+                  <th className="p-4 font-semibold">Patient Notes</th>
                   <th className="p-4 font-semibold">Date & Time</th>
                   <th className="p-4 font-semibold">Status</th>
                   <th className="p-4 font-semibold text-right">Actions</th>
@@ -662,7 +819,7 @@ export default function AdminDashboard() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-[#2F3E3C]/60">
+                    <td colSpan={6} className="p-8 text-center text-[#2F3E3C]/60">
                       <span className="inline-block w-5 h-5 rounded-full border-2 border-[#BDDBD1] border-t-transparent animate-spin mr-2" />
                       Loading real-time appointments...
                     </td>
@@ -685,6 +842,25 @@ export default function AdminDashboard() {
                       </td>
                       <td className="p-4">
                         <div className="text-sm font-medium text-[#2F3E3C] bg-gradient-to-r from-[#E8F0F1] to-[#C7E7EC]/40 inline-block px-3 py-1 rounded-md border border-[#BDDBD1]/30">{appt.treatment}</div>
+                      </td>
+                      <td className="p-4 max-w-[240px]">
+                        {appt.notes && appt.notes.trim() ? (
+                          <div 
+                            onClick={() => setViewingNotesAppt(appt)}
+                            className="group cursor-pointer p-2 rounded-xl bg-amber-50/80 hover:bg-amber-100/90 border border-amber-200/80 transition-all shadow-2xs hover:shadow-xs"
+                            title="Click to view full notes"
+                          >
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800 mb-0.5">
+                              <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Patient Note</span>
+                            </div>
+                            <p className="text-xs text-amber-950/85 line-clamp-2 italic leading-snug">
+                              &quot;{appt.notes}&quot;
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">No notes provided</span>
+                        )}
                       </td>
                       <td className="p-4">
                         <div className="text-sm font-semibold text-[#2F3E3C]">{appt.date}</div>
@@ -771,7 +947,7 @@ export default function AdminDashboard() {
                 })}
                 {!loading && filteredAppts.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-[#2F3E3C]/60">
+                    <td colSpan={6} className="p-8 text-center text-[#2F3E3C]/60">
                       No appointments found.
                     </td>
                   </tr>
@@ -781,6 +957,311 @@ export default function AdminDashboard() {
           </div>
         </div>
       </ScrollReveal>
+      </>
+    )}
+
+      {/* TAB 2: CLINIC HOLIDAYS & SLOT BLOCKING MANAGEMENT */}
+      {activeTab === 'holidays' && (
+        <div className="space-y-6">
+          {/* Header Info Banner */}
+          <ScrollReveal direction="up" delay={100}>
+            <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-[#2F3E3C] text-white p-6 sm:p-8 rounded-3xl shadow-lg border border-rose-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-rose-200 text-xs font-bold mb-3 border border-white/10">
+                  <Palmtree className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Automatic Slot Disabler & AI Receptionist Sync</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  Clinic Holidays & Slot Blocking
+                </h2>
+                <p className="text-rose-100/80 text-xs sm:text-sm max-w-2xl mt-1.5 leading-relaxed">
+                  Mark single dates or date ranges (e.g. festivals, personal vacation, or clinic renovation). When marked closed, the booking form automatically disables time slots with a clear holiday warning, and the DenTo AI receptionist guides patients to the next open working day.
+                </p>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-md px-5 py-4 rounded-2xl border border-white/20 text-center shrink-0 w-full sm:w-auto">
+                <div className="text-3xl font-black text-amber-300">{holidays.length}</div>
+                <div className="text-[11px] font-bold text-rose-100 tracking-wide uppercase mt-0.5">
+                  Scheduled Holidays
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
+
+          {/* Add Holiday Form Card */}
+          <ScrollReveal direction="up" delay={150}>
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-[#BDDBD1]/50">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200 shadow-xs">
+                  <CalendarOff className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[#2F3E3C]">Mark Clinic Closed / Add Holiday</h3>
+                  <p className="text-xs text-[#2F3E3C]/60">Select dates and reason in 2 simple clicks</p>
+                </div>
+              </div>
+
+              {holidayError && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{holidayError}</span>
+                </div>
+              )}
+
+              {holidaySuccess && (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-700 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>{holidaySuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleAddHoliday} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Start Date <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newHolidayStart}
+                    onChange={(e) => {
+                      setNewHolidayStart(e.target.value);
+                      if (!newHolidayEnd || newHolidayEnd < e.target.value) {
+                        setNewHolidayEnd(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#2F3E3C] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    End Date <span className="text-slate-400 font-normal">(Same if 1 day)</span>
+                  </label>
+                  <input
+                    type="date"
+                    min={newHolidayStart}
+                    value={newHolidayEnd}
+                    onChange={(e) => setNewHolidayEnd(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#2F3E3C] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Reason / Occasion
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Diwali Vacation, Doctor on Leave, Renovation"
+                    value={newHolidayReason}
+                    onChange={(e) => setNewHolidayReason(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#2F3E3C] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    disabled={isAddingHoliday || !newHolidayStart}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-rose-700 via-rose-800 to-rose-900 hover:brightness-110 active:scale-98 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md shadow-rose-900/20 flex items-center justify-center gap-2 cursor-pointer h-[42px]"
+                  >
+                    {isAddingHoliday ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <PlusCircle className="w-4 h-4" />
+                        <span>Add Holiday 🏖️</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </ScrollReveal>
+
+          {/* Scheduled Holidays List Table */}
+          <ScrollReveal direction="up" delay={200}>
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-[#BDDBD1]/50">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-[#2F3E3C] flex items-center gap-2">
+                  <span>Active & Upcoming Holidays</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    {holidays.length}
+                  </span>
+                </h3>
+              </div>
+
+              {holidays.length === 0 ? (
+                <div className="text-center py-12 px-4 rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+                  <Palmtree className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700">No Clinic Holidays Scheduled</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                    The clinic is open on all standard working days. Add a holiday date above whenever Dr. Ananya Roy is away or the clinic is closed.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="p-3.5">Dates Closed</th>
+                        <th className="p-3.5">Duration</th>
+                        <th className="p-3.5">Holiday Reason / Note</th>
+                        <th className="p-3.5">Status</th>
+                        <th className="p-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
+                      {holidays.map((h) => {
+                        const isSingleDay = h.startDate === h.endDate;
+                        const todayIso = new Date().toISOString().split('T')[0];
+                        const isPast = h.endDate < todayIso;
+                        const isToday = todayIso >= h.startDate && todayIso <= h.endDate;
+
+                        return (
+                          <tr key={h.id} className="hover:bg-rose-50/20 transition-colors">
+                            <td className="p-3.5 font-bold text-slate-900">
+                              <div className="flex items-center gap-2">
+                                <CalendarOff className="w-4 h-4 text-rose-600 shrink-0" />
+                                <div>
+                                  {isSingleDay ? (
+                                    <span>{formatDisplayDate(h.startDate)}</span>
+                                  ) : (
+                                    <span>
+                                      {formatDisplayDate(h.startDate)} — {formatDisplayDate(h.endDate)}
+                                    </span>
+                                  )}
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {h.startDate} {h.startDate !== h.endDate ? `to ${h.endDate}` : ''}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3.5 text-slate-600 font-medium">
+                              {isSingleDay ? '1 Day' : 'Multi-day Vacation'}
+                            </td>
+                            <td className="p-3.5">
+                              <span className="inline-block px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 font-semibold border border-amber-200">
+                                {h.reason}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              {isToday ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-xs font-bold animate-pulse">
+                                  ● Closed Today
+                                </span>
+                              ) : isPast ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
+                                  Past
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                                  Upcoming (Locked)
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <button
+                                type="button"
+                                disabled={deletingHolidayId === h.id}
+                                onClick={() => handleDeleteHoliday(h.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                                title="Remove holiday and reopen slots"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                <span>{deletingHolidayId === h.id ? 'Removing...' : 'Delete'}</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </ScrollReveal>
+        </div>
+      )}
+
+      {/* Patient Notes Quick View Modal */}
+      {viewingNotesAppt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2F3E3C]/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1] rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-[#BDDBD1]/50 relative animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setViewingNotesAppt(null)}
+              className="absolute top-5 right-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              aria-label="Close notes modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shadow-xs">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-[#2F3E3C]">Patient Instructions & Notes</h3>
+                <p className="text-xs text-[#2F3E3C]/60">Submitted during appointment booking</p>
+              </div>
+            </div>
+
+            <div className="bg-white/90 rounded-2xl p-4 border border-[#BDDBD1]/40 space-y-2 mb-4 text-xs text-slate-700">
+              <div className="flex justify-between border-b border-[#BDDBD1]/20 pb-1.5">
+                <span className="font-semibold text-slate-500">Patient Name:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.name}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#BDDBD1]/20 pb-1.5">
+                <span className="font-semibold text-slate-500">Selected Treatment:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.treatment}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#BDDBD1]/20 pb-1.5">
+                <span className="font-semibold text-slate-500">Date & Time:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.date} at {viewingNotesAppt.time}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-slate-500">Phone Contact:</span>
+                <span className="font-bold text-[#2F3E3C]">{viewingNotesAppt.phone ? `+${viewingNotesAppt.phone}` : 'N/A'}</span>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#2F3E3C]/80 mb-2">
+                Patient Message / Medical Notes:
+              </label>
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-sm text-[#2F3E3C] leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
+                {viewingNotesAppt.notes || 'No custom notes provided.'}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setViewingNotesAppt(null)}
+                className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold text-[#2F3E3C] bg-white border border-[#BDDBD1]/60 hover:bg-[#FBF9F1] transition-all cursor-pointer shadow-xs"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const appt = viewingNotesAppt;
+                  setViewingNotesAppt(null);
+                  handleWhatsApp(appt);
+                }}
+                className="flex-1 py-3 px-4 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:brightness-105 transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Reply on WhatsApp</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Admin Time Adjustment Modal */}
       {adjustingAppt && (

@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, Clock, User, FileText, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react';
 import ScrollReveal from '@/components/ScrollReveal';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { checkIsDateHoliday, getNextAvailableWorkingDate, formatDisplayDate, type ClinicHoliday } from '@/lib/holidays';
 
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -78,6 +79,23 @@ function BookAppointmentContent() {
   const [bookingRef, setBookingRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [autoSignPrompted, setAutoSignPrompted] = useState(false);
+  const [holidays, setHolidays] = useState<ClinicHoliday[]>([]);
+
+  // Real-time listener for clinic holidays
+  useEffect(() => {
+    const q = query(collection(db, 'holidays'), orderBy('startDate', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: ClinicHoliday[] = snapshot.docs.map(d => ({
+        id: d.id,
+        startDate: d.data().startDate || '',
+        endDate: d.data().endDate || d.data().startDate || '',
+        reason: d.data().reason || 'Holiday / Clinic Closed',
+      }));
+      setHolidays(list);
+    }, (err) => console.warn('Holidays listener error:', err));
+
+    return () => unsubscribe();
+  }, []);
 
   // Avoid hydration mismatch & prefill user details
   const [mounted, setMounted] = useState(false);
@@ -108,6 +126,11 @@ function BookAppointmentContent() {
   const todayStr = mounted ? new Date().toISOString().split('T')[0] : '';
   const isPastDate = formData.date && todayStr ? formData.date < todayStr : false;
 
+  // Check if selected date falls under a clinic holiday
+  const activeHoliday = checkIsDateHoliday(formData.date, holidays);
+  const isHolidayDate = !!activeHoliday;
+  const nextOpenDate = isHolidayDate ? getNextAvailableWorkingDate(formData.date, holidays) : '';
+
   const handleNext = () => setStep(s => Math.min(4, s + 1));
   const handlePrev = () => setStep(s => Math.max(1, s - 1));
 
@@ -115,6 +138,10 @@ function BookAppointmentContent() {
     e.preventDefault();
     if (isPastDate) {
       alert('Please select today or a future date for your appointment.');
+      return;
+    }
+    if (isHolidayDate) {
+      alert(`The clinic is closed on ${formatDisplayDate(formData.date)} due to: ${activeHoliday.reason}. Please select another date.`);
       return;
     }
     if (!user) {
@@ -165,6 +192,22 @@ function BookAppointmentContent() {
       };
 
       await addDoc(collection(db, 'appointments'), appointmentData);
+
+      // Notify clinic owner via email asynchronously
+      fetch('/api/notify-owner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: formData.name,
+          phone: formData.phone,
+          treatment: formData.treatment,
+          date: formData.date,
+          time: formData.time,
+          bookingRef: refCode,
+          notes: formData.notes || '',
+          bookingTimestamp: new Date().toISOString(),
+        }),
+      }).catch(err => console.error('Failed to notify owner:', err));
     } catch (err) {
       console.error('Booking error:', err);
     } finally {
@@ -314,20 +357,63 @@ function BookAppointmentContent() {
                     min={todayStr}
                     value={formData.date}
                     onChange={(e) => setFormData({...formData, date: e.target.value})}
-                    className={`w-full p-4 rounded-xl border-2 ${isPastDate ? 'border-red-400 bg-red-50/40' : 'border-slate-300 bg-white'} text-slate-950 font-semibold focus:border-[#2F3E3C] focus:ring-2 focus:ring-[#BDDBD1]/50 outline-none transition-colors shadow-xs`}
+                    className={`w-full p-4 rounded-xl border-2 ${
+                      isPastDate || isHolidayDate 
+                        ? 'border-amber-400 bg-amber-50/30' 
+                        : 'border-slate-300 bg-white'
+                    } text-slate-950 font-semibold focus:border-[#2F3E3C] focus:ring-2 focus:ring-[#BDDBD1]/50 outline-none transition-colors shadow-xs`}
                   />
                   {isPastDate && (
                     <p className="text-xs font-bold text-red-600 mt-2 flex items-center gap-1">
                       ⚠️ Past dates cannot be booked. Please select today or an upcoming date.
                     </p>
                   )}
+                  {isHolidayDate && activeHoliday && (
+                    <div className="mt-3 p-3.5 bg-gradient-to-r from-amber-50 via-rose-50/40 to-amber-50 border-2 border-amber-300 rounded-xl shadow-xs animate-in fade-in duration-300">
+                      <div className="flex items-start gap-2.5">
+                        <span className="text-xl shrink-0">🏖️</span>
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                            Clinic is closed on this date due to holiday
+                          </p>
+                          <p className="text-xs text-amber-900 font-medium">
+                            <strong>Reason:</strong> {activeHoliday.reason}
+                          </p>
+                          {nextOpenDate && (
+                            <div className="pt-1.5 flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-slate-700 font-semibold">
+                                Suggested next working day: <strong className="text-emerald-800">{formatDisplayDate(nextOpenDate)}</strong>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, date: nextOpenDate })}
+                                className="px-2.5 py-1 bg-[#2F3E3C] hover:bg-[#1f2a28] active:scale-95 text-white text-[11px] font-bold rounded-lg transition-all shadow-xs cursor-pointer"
+                              >
+                                Select {formatDisplayDate(nextOpenDate)} →
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-900 mb-2">Preferred Time Slot</label>
+
+                <div className={isHolidayDate ? 'opacity-40 pointer-events-none filter grayscale select-none' : ''}>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-bold text-slate-900">
+                      Preferred Time Slot {isHolidayDate && <span className="text-rose-600 text-xs font-bold">(Locked / Unavailable)</span>}
+                    </label>
+                  </div>
                   <AlarmTimePicker 
                     value={formData.time || '09:00 AM'} 
                     onChange={(newTime) => setFormData(prev => ({ ...prev, time: newTime }))} 
                   />
+                  {isHolidayDate && (
+                    <p className="text-xs font-bold text-rose-600 mt-2 flex items-center gap-1.5">
+                      🔒 Slots are disabled because the clinic is closed on this date.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -405,7 +491,7 @@ function BookAppointmentContent() {
                 onClick={handleNext}
                 disabled={
                   (step === 1 && !formData.treatment) || 
-                  (step === 2 && (!formData.date || !formData.time || isPastDate)) ||
+                  (step === 2 && (!formData.date || !formData.time || isPastDate || isHolidayDate)) ||
                   (step === 3 && (!formData.name || !formData.age || !formData.phone))
                 }
                 className="px-7 py-3 rounded-xl font-semibold bg-gradient-to-r from-[#2F3E3C] via-[#3d524f] to-[#2F3E3C] text-white hover:brightness-110 shadow-md shadow-[#2F3E3C]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"

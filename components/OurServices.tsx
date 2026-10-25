@@ -259,7 +259,9 @@ export default function OurServices() {
   
   // Touch gesture tracking for mobile swipe
   const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
   const touchEndXRef = useRef<number | null>(null);
+  const touchEndYRef = useRef<number | null>(null);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -300,14 +302,14 @@ export default function OurServices() {
     };
   }, []);
 
-  // Safe navigation handlers with transition locking
+  // Safe navigation handlers with transition locking (shorter, responsive lock to avoid input lag on phones)
   const handleNext = useCallback(() => {
     if (isTransitioning) return;
     setIsTransitioning(true);
     setActiveIndex((prev) => (prev + 1) % totalCards);
     setTimeout(() => {
       setIsTransitioning(false);
-    }, prefersReducedMotion ? 50 : 550);
+    }, prefersReducedMotion ? 50 : 380);
   }, [isTransitioning, totalCards, prefersReducedMotion]);
 
   const handlePrev = useCallback(() => {
@@ -316,7 +318,7 @@ export default function OurServices() {
     setActiveIndex((prev) => (prev - 1 + totalCards) % totalCards);
     setTimeout(() => {
       setIsTransitioning(false);
-    }, prefersReducedMotion ? 50 : 550);
+    }, prefersReducedMotion ? 50 : 380);
   }, [isTransitioning, totalCards, prefersReducedMotion]);
 
   const jumpToIndex = useCallback((targetIndex: number) => {
@@ -325,7 +327,7 @@ export default function OurServices() {
     setActiveIndex(targetIndex);
     setTimeout(() => {
       setIsTransitioning(false);
-    }, prefersReducedMotion ? 50 : 550);
+    }, prefersReducedMotion ? 50 : 380);
   }, [isTransitioning, activeIndex, prefersReducedMotion]);
 
   // Keyboard navigation
@@ -342,27 +344,43 @@ export default function OurServices() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handlePrev, handleNext, isModalOpen]);
 
-  // Touch Swipe Handlers for mobile
+  // Touch Swipe Handlers for mobile - responsive with horizontal intent detection
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
+    touchStartYRef.current = e.touches[0].clientY;
     touchEndXRef.current = null;
+    touchEndYRef.current = null;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     touchEndXRef.current = e.touches[0].clientX;
+    touchEndYRef.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = () => {
-    if (touchStartXRef.current !== null && touchEndXRef.current !== null) {
+    if (
+      touchStartXRef.current !== null && 
+      touchEndXRef.current !== null &&
+      touchStartYRef.current !== null &&
+      touchEndYRef.current !== null
+    ) {
       const deltaX = touchEndXRef.current - touchStartXRef.current;
-      if (deltaX > 45) {
-        handlePrev();
-      } else if (deltaX < -45) {
-        handleNext();
+      const deltaY = touchEndYRef.current - touchStartYRef.current;
+      
+      // Only trigger horizontal card swipe if movement is predominantly horizontal
+      // and exceeds a gentle 35px threshold for instant, responsive feel on mobile
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 35) {
+        if (deltaX > 0) {
+          handlePrev();
+        } else {
+          handleNext();
+        }
       }
     }
     touchStartXRef.current = null;
+    touchStartYRef.current = null;
     touchEndXRef.current = null;
+    touchEndYRef.current = null;
   };
 
   // Dedicated Down Arrow: scrolls to the next section (FAQ)
@@ -467,6 +485,22 @@ export default function OurServices() {
       // 1. Save directly to Cloud Firestore
       await addDoc(collection(db, 'appointments'), appointmentData);
 
+      // Notify clinic owner via email asynchronously
+      fetch('/api/notify-owner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: patientName,
+          phone: patientPhone,
+          treatment: selectedServiceForModal.title,
+          date: appointmentDate,
+          time: appointmentTime,
+          bookingRef: refNumber,
+          notes: notes || '',
+          bookingTimestamp: new Date().toISOString(),
+        }),
+      }).catch(err => console.error('Failed to notify owner:', err));
+
       // 2. Also keep in local storage for instant offline access
       const existing = localStorage.getItem('luminous_appointments');
       const list = existing ? JSON.parse(existing) : [];
@@ -561,7 +595,13 @@ export default function OurServices() {
 
         {/* Category Navigation Bar - Horizontal Scrolling on Mobile/Phone */}
         <div className="mb-8 w-full">
-          <div className="flex items-center sm:justify-center gap-2 overflow-x-auto no-scrollbar scroll-smooth flex-nowrap pb-3 pt-1 px-4 sm:px-2 -mx-4 sm:mx-0 w-auto">
+          <div 
+            className="flex items-center sm:justify-center gap-2 overflow-x-auto no-scrollbar scroll-smooth flex-nowrap pb-3 pt-1 px-4 sm:px-2 -mx-4 sm:mx-0 w-auto overscroll-x-contain touch-pan-x"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              scrollSnapType: 'x proximity',
+            }}
+          >
             {CATEGORIES.map((cat) => {
               const isSelected = cat === 'All' 
                 ? activeIndex === 0 
@@ -574,9 +614,10 @@ export default function OurServices() {
                 <button
                   key={cat}
                   onClick={() => handleCategoryClick(cat)}
-                  className={`shrink-0 px-3.5 sm:px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-300 flex items-center gap-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#BDDBD1]/50 ${
+                  style={{ scrollSnapAlign: 'start' }}
+                  className={`shrink-0 px-3.5 sm:px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors duration-200 flex items-center gap-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#BDDBD1]/50 ${
                     isSelected
-                      ? 'bg-[#BDDBD1] text-[#2F3E3C] shadow-lg shadow-[#BDDBD1]/25 scale-105 font-bold'
+                      ? 'bg-[#BDDBD1] text-[#2F3E3C] shadow-md shadow-[#BDDBD1]/25 font-bold'
                       : 'bg-white/10 text-white/85 hover:text-white hover:bg-white/20 border border-white/15'
                   }`}
                   aria-label={`Jump to ${cat} treatments`}
@@ -597,7 +638,7 @@ export default function OurServices() {
         {/* 3D LAYERED SERVICE CARDS CAROUSEL */}
         {/* ========================================================================= */}
         <div 
-          className="relative w-full h-[540px] sm:h-[580px] md:h-[610px] flex items-center justify-center select-none overflow-hidden -mt-10"
+          className="relative w-full h-[540px] sm:h-[580px] md:h-[610px] flex items-center justify-center select-none overflow-hidden -mt-10 touch-pan-y"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -637,7 +678,9 @@ export default function OurServices() {
               let zIndex = 30;
               let opacity = 1;
               let blurPx = 0;
-              let boxShadow = '0 25px 60px -15px rgba(0, 0, 0, 0.55), 0 0 35px -5px rgba(189, 219, 209, 0.35)';
+              let boxShadow = isMobile 
+                ? '0 10px 25px -5px rgba(0, 0, 0, 0.35)' 
+                : '0 25px 60px -15px rgba(0, 0, 0, 0.55), 0 0 35px -5px rgba(189, 219, 209, 0.35)';
 
               if (diff === 0) {
                 translateX = 0;
@@ -645,28 +688,31 @@ export default function OurServices() {
                 zIndex = 30;
                 opacity = 1;
                 blurPx = 0;
-                boxShadow = '0 25px 60px -15px rgba(0, 0, 0, 0.55), 0 0 35px -5px rgba(189, 219, 209, 0.35)';
               } else if (diff === -1) {
                 translateX = -stepOffset1;
-                scale = 0.85;
+                scale = 0.88;
                 zIndex = 20;
-                opacity = 0.7;
-                blurPx = 2.5;
-                boxShadow = '0 15px 35px -10px rgba(0, 0, 0, 0.45), 0 0 20px -5px rgba(189, 219, 209, 0.2)';
+                opacity = 0.75;
+                blurPx = isMobile ? 0 : 2; // avoid heavy GPU blur filter on phone
+                boxShadow = isMobile 
+                  ? '0 6px 15px -4px rgba(0, 0, 0, 0.25)' 
+                  : '0 15px 35px -10px rgba(0, 0, 0, 0.45), 0 0 20px -5px rgba(189, 219, 209, 0.2)';
               } else if (diff === 1) {
                 translateX = stepOffset1;
-                scale = 0.85;
+                scale = 0.88;
                 zIndex = 20;
-                opacity = 0.7;
-                blurPx = 2.5;
-                boxShadow = '0 15px 35px -10px rgba(0, 0, 0, 0.45), 0 0 20px -5px rgba(189, 219, 209, 0.2)';
+                opacity = 0.75;
+                blurPx = isMobile ? 0 : 2; // avoid heavy GPU blur filter on phone
+                boxShadow = isMobile 
+                  ? '0 6px 15px -4px rgba(0, 0, 0, 0.25)' 
+                  : '0 15px 35px -10px rgba(0, 0, 0, 0.45), 0 0 20px -5px rgba(189, 219, 209, 0.2)';
               } else {
                 const dir = diff > 0 ? 1 : -1;
                 translateX = dir * (stepOffset1 + cardWidth);
-                scale = 0.65;
+                scale = 0.7;
                 zIndex = 0;
                 opacity = 0;
-                blurPx = 6;
+                blurPx = isMobile ? 0 : 4;
                 boxShadow = 'none';
               }
 
@@ -675,6 +721,8 @@ export default function OurServices() {
                 if (diff === -1) handlePrev();
                 else if (diff === 1) handleNext();
               };
+
+              const transitionDuration = isMobile ? '380ms' : '500ms';
 
               return (
                 <div
@@ -685,17 +733,19 @@ export default function OurServices() {
                     left: '50%',
                     top: '50%',
                     width: `${cardWidth}px`,
-                    transform: `translate(calc(-50% + ${translateX}px), -50%) scale(${scale})`,
+                    transform: `translate3d(calc(-50% + ${translateX}px), -50%, 0) scale(${scale})`,
                     zIndex,
                     opacity,
-                    filter: `blur(${blurPx}px)`,
+                    filter: blurPx > 0 ? `blur(${blurPx}px)` : undefined,
                     boxShadow,
                     transition: prefersReducedMotion
                       ? 'none'
-                      : 'transform 600ms cubic-bezier(0.25, 1, 0.5, 1), opacity 600ms cubic-bezier(0.25, 1, 0.5, 1), filter 600ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 600ms cubic-bezier(0.25, 1, 0.5, 1)',
+                      : `transform ${transitionDuration} cubic-bezier(0.16, 1, 0.3, 1), opacity ${transitionDuration} cubic-bezier(0.16, 1, 0.3, 1)`,
                     pointerEvents: isVisible ? 'auto' : 'none',
                     cursor: !isActive && isVisible ? 'pointer' : 'default',
-                    willChange: 'transform, opacity, filter',
+                    willChange: 'transform, opacity',
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden',
                   }}
                   className="rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-br from-[#FBF9F1] via-white to-[#E8F0F1] border border-[#BDDBD1]/60 flex flex-col justify-between"
                   aria-hidden={!isActive}
