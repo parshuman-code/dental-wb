@@ -126,7 +126,7 @@ export async function POST(request: Request) {
         <p style="margin: 0 0 10px 0; font-size: 13px; color: #166534; font-weight: 600;">
           📲 Quick Action for Clinic Receptionist / Owner:
         </p>
-        <a href="https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=Hello%20${encodeURIComponent(patientName)}%2C%20we%20have%20received%20your%20appointment%20request%20for%20${encodeURIComponent(treatment)}%20on%20${encodeURIComponent(date)}%20at%20${encodeURIComponent(time)}." 
+        <a href="https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=Hello%20${encodeURIComponent(patientName)}%2C%20we%20have%20received%20your%20appointment%20request%20for%20${encodeURIComponent(treatment)}%20on%20${encodeURIComponent(date)}%20at%20${encodeURIComponent(time)}.%20We%20will%20confirm%20your%20appointment%20within%202%20working%20hours.%20Thank%20you%20for%20choosing%20Luminous%20Dental%20Clinic!%20%F0%9F%A6%B7" 
            style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">
           Message Patient on WhatsApp
         </a>

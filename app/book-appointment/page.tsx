@@ -230,7 +230,7 @@ function BookAppointmentContent() {
           Booking Reference: <span className="text-[#2F3E3C] text-sm">{bookingRef}</span>
         </p>
         <p className="text-base sm:text-lg text-[#2F3E3C]/70 max-w-md mx-auto mb-8">
-          Thank you, {formData.name}. We have received your appointment request for {formData.date} at {formData.time}. Our clinic team will contact you shortly.
+          Thank you, {formData.name}. We have received your appointment request for {formData.date} at {formData.time}. Our clinic team will confirm your booking <strong className="text-[#2F3E3C]">within 2 working hours</strong>.
         </p>
         <div className="flex flex-wrap gap-3 justify-center">
           <Link
