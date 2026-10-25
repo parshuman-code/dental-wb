@@ -485,6 +485,22 @@ export default function OurServices() {
       // 1. Save directly to Cloud Firestore
       await addDoc(collection(db, 'appointments'), appointmentData);
 
+      // Notify clinic owner via email asynchronously
+      fetch('/api/notify-owner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: patientName,
+          phone: patientPhone,
+          treatment: selectedServiceForModal.title,
+          date: appointmentDate,
+          time: appointmentTime,
+          bookingRef: refNumber,
+          notes: notes || '',
+          bookingTimestamp: new Date().toISOString(),
+        }),
+      }).catch(err => console.error('Failed to notify owner:', err));
+
       // 2. Also keep in local storage for instant offline access
       const existing = localStorage.getItem('luminous_appointments');
       const list = existing ? JSON.parse(existing) : [];

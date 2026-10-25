@@ -192,6 +192,22 @@ function BookAppointmentContent() {
       };
 
       await addDoc(collection(db, 'appointments'), appointmentData);
+
+      // Notify clinic owner via email asynchronously
+      fetch('/api/notify-owner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: formData.name,
+          phone: formData.phone,
+          treatment: formData.treatment,
+          date: formData.date,
+          time: formData.time,
+          bookingRef: refCode,
+          notes: formData.notes || '',
+          bookingTimestamp: new Date().toISOString(),
+        }),
+      }).catch(err => console.error('Failed to notify owner:', err));
     } catch (err) {
       console.error('Booking error:', err);
     } finally {

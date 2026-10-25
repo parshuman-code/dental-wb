@@ -468,6 +468,22 @@ export default function AIChatbot() {
 
       await addDoc(collection(db, 'appointments'), appointmentData);
 
+      // Notify clinic owner via email asynchronously
+      fetch('/api/notify-owner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: activeBooking.patientName,
+          phone: activeBooking.patientPhone,
+          treatment: activeBooking.treatment,
+          date: activeBooking.date,
+          time: activeBooking.time,
+          bookingRef: refCode,
+          notes: activeBooking.notes || 'Booked via DenTo AI Receptionist',
+          bookingTimestamp: new Date().toISOString(),
+        }),
+      }).catch(err => console.error('Failed to notify owner:', err));
+
       // Transition to confirmed card
       setActiveBooking({
         ...activeBooking,
