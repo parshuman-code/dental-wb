@@ -209,7 +209,13 @@ export default function Navbar() {
             ) : (
               /* Guest User: Google Sign In */
               <GlowButton
-                onClick={signInWithGoogle}
+                onClick={async () => {
+                  try {
+                    await signInWithGoogle();
+                  } catch (e) {
+                    console.error('Navbar sign-in error:', e);
+                  }
+                }}
                 disabled={loading}
                 glowColor="rgba(45, 212, 191, 0.4)"
                 glowSize={120}
