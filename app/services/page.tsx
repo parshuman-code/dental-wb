@@ -34,11 +34,11 @@ export default function ServicesPage() {
               Gentle & Transparent Dentistry
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold text-white mb-6 tracking-tight">
-              Modern Dental Treatments, <br />
-              <span className="text-[#BDDBD1]">Explained in Simple English</span>
+              Comprehensive Dental Care, <br />
+              <span className="text-[#BDDBD1]">Tailored to Your Smile</span>
             </h1>
             <p className="text-lg sm:text-xl text-[#E7E9E3] max-w-2xl mx-auto leading-relaxed">
-              We believe every patient deserves clear answers without scary medical jargon. Discover our treatments and book directly with certified MDS specialists.
+              Explore our full range of advanced treatments designed for comfort, precision, and lasting oral health with certified MDS specialists.
             </p>
           </ScrollReveal>
 
